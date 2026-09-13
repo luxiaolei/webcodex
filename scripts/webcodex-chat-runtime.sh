@@ -45,11 +45,16 @@ case "${1:-status}" in
     [[ -f "$adapter_config" ]] || die "run '$0 setup' once for the shared ChatGPT Web profile"
     ensure_adapter_dependencies
     mkdir -p "$LOG_ROOT"
-    CODEX_CHATGPT_WEB_HOME="$CHAT_HOME" bun run --cwd "$ADAPTER_ROOT" src/cli.ts serve >"$ADAPTER_LOG" 2>&1 &
-    adapter_pid=$!
+    adapter_pid=''
+    if ! curl -fsS "$ADAPTER_URL/healthz" >/dev/null 2>&1; then
+      CODEX_CHATGPT_WEB_HOME="$CHAT_HOME" bun run --cwd "$ADAPTER_ROOT" src/cli.ts serve >"$ADAPTER_LOG" 2>&1 &
+      adapter_pid=$!
+    fi
     cleanup() {
-      kill "$adapter_pid" 2>/dev/null || true
-      wait "$adapter_pid" 2>/dev/null || true
+      if [[ -n "$adapter_pid" ]]; then
+        kill "$adapter_pid" 2>/dev/null || true
+        wait "$adapter_pid" 2>/dev/null || true
+      fi
     }
     trap cleanup EXIT INT TERM
     for _ in {1..60}; do

@@ -11,7 +11,8 @@ repository and one user-facing runtime:
 Run `scripts/webcodex-chat-runtime.sh setup` once for the machine/account. The
 profile is stored outside the repository under
 `$XDG_CONFIG_HOME/webcodex/chatgpt-web` (or `~/.config/webcodex/chatgpt-web`).
-Then run `scripts/webcodex-chat-runtime.sh start` to supervise both processes.
+Then run `scripts/webcodex-chat-runtime.sh start` to start WebCodex and start or
+reuse the adapter process.
 The adapter URL, browser profile, model, and account settings are global
 runtime settings. A project never needs an adapter edit or a second login.
 
