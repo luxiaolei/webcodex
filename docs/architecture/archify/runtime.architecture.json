@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "WebCodex Unified Chat Runtime",
+    "title": "WebCodex 控制面：Chat 总控 → MCP / Router → 本地 CLI 或 Web Chat",
     "locale": "zh-CN",
     "output": "runtime.architecture.html",
     "quality_profile": "showcase",
@@ -10,15 +10,15 @@
       "url": "https://github.com/yyjeqhc/webcodex",
       "provider": "github",
       "link_mode": "web",
-      "revision": "e4d38d91706c59e1fcee7c6526f0f56fd70f8455"
+      "revision": "cfaff95b9eab89218bbf1889c6cbb4524176301e"
     }
   },
   "components": [
     {
       "id": "caller",
       "type": "external",
-      "label": "调用方 / Agent",
-      "sublabel": "API 或 MCP",
+      "label": "Chat 总控",
+      "sublabel": "读 GitHub / 规划 / 选目标",
       "pos": [
         40,
         283
@@ -26,13 +26,14 @@
       "size": [
         150,
         64
-      ]
+      ],
+      "tag": "唯一决策者"
     },
     {
       "id": "chat_api",
       "type": "backend",
       "label": "Chat Session API",
-      "sublabel": "POST /api/chat/session",
+      "sublabel": "/api/chat/session · send / read",
       "pos": [
         260,
         280
@@ -41,7 +42,7 @@
         190,
         70
       ],
-      "tag": "create · send · read",
+      "tag": "网页桥接入口",
       "sources": [
         {
           "path": "src/chat_http.rs",
@@ -55,7 +56,7 @@
       "id": "local_mcp",
       "type": "backend",
       "label": "WebCodex MCP",
-      "sublabel": "POST /mcp",
+      "sublabel": "/mcp · task_start / task_review",
       "pos": [
         260,
         540
@@ -64,7 +65,7 @@
         190,
         70
       ],
-      "tag": "task · files · git",
+      "tag": "本地工具入口",
       "sources": [
         {
           "path": "src/mcp.rs",
@@ -99,8 +100,8 @@
     {
       "id": "runner",
       "type": "backend",
-      "label": "Runner + Project",
-      "sublabel": "本地项目边界",
+      "label": "Worker Codex CLI（子会话）",
+      "sublabel": "codex exec · GPT-6 · medium",
       "pos": [
         560,
         540
@@ -115,7 +116,8 @@
           "line": 1,
           "label": "Runner runtime"
         }
-      ]
+      ],
+      "tag": "目标执行任务"
     },
     {
       "id": "provider",
@@ -141,10 +143,25 @@
       ]
     },
     {
+      "id": "thread_agent",
+      "type": "backend",
+      "label": "Router Codex CLI（父会话）",
+      "sublabel": "gpt-6-astra · low · 理解信封 / 派发",
+      "pos": [
+        560,
+        410
+      ],
+      "size": [
+        220,
+        70
+      ],
+      "tag": "目标父任务"
+    },
+    {
       "id": "local_tools",
       "type": "backend",
-      "label": "本地工具 / Job",
-      "sublabel": "命令、文件、Git",
+      "label": "本地 Workspace / Tools",
+      "sublabel": "文件、Git、测试与命令",
       "pos": [
         850,
         540
@@ -157,8 +174,8 @@
     {
       "id": "taskspace",
       "type": "external",
-      "label": "Ego TaskSpace",
-      "sublabel": "已登录账号",
+      "label": "Ego Browser Project→Space",
+      "sublabel": "HZ OS → Space 1 · QuantCompany → Space 2",
       "pos": [
         850,
         280
@@ -166,13 +183,14 @@
       "size": [
         180,
         70
-      ]
+      ],
+      "tag": "统一网页运行时"
     },
     {
       "id": "web_project",
       "type": "external",
-      "label": "ChatGPT Project / Chat",
-      "sublabel": "首次发送时创建 /c/...",
+      "label": "目标 Web Chat Session",
+      "sublabel": "Quant / HZ OS Project 内的 Chat",
       "pos": [
         850,
         410
@@ -181,12 +199,12 @@
         180,
         70
       ],
-      "tag": "可选 web_project_url"
+      "tag": "首次 send 创建"
     },
     {
       "id": "fallback",
       "type": "backend",
-      "label": "Vendored adapter",
+      "label": "Web Chat fallback",
       "sublabel": "vendor/codex-chatgpt-web",
       "pos": [
         850,
@@ -196,7 +214,7 @@
         180,
         70
       ],
-      "tag": "显式 fallback"
+      "tag": "仅无 Ego 时显式使用"
     }
   ],
   "boundaries": [
@@ -209,6 +227,7 @@
         "store",
         "runner",
         "provider",
+        "thread_agent",
         "local_tools",
         "fallback"
       ],
@@ -229,15 +248,17 @@
       "id": "caller-chat",
       "from": "caller",
       "to": "chat_api",
-      "label": "创建 / 发送",
+      "label": "规划 / 创建或发送",
       "variant": "emphasis",
-      "route": "orthogonal-h"
+      "route": "orthogonal-h",
+      "labelDy": -26,
+      "labelDx": -50
     },
     {
       "id": "caller-mcp",
       "from": "caller",
       "to": "local_mcp",
-      "label": "工具调用",
+      "label": "当前：MCP task_start / task_review",
       "variant": "dashed",
       "route": "orthogonal-v",
       "fromSide": "bottom",
@@ -248,7 +269,7 @@
       "id": "chat-store",
       "from": "chat_api",
       "to": "store",
-      "label": "持久化绑定与状态",
+      "label": "持久化 session / operation",
       "variant": "emphasis",
       "fromSide": "top",
       "toSide": "bottom",
@@ -260,24 +281,47 @@
       "id": "mcp-runner",
       "from": "local_mcp",
       "to": "runner",
-      "label": "校验 Project / 启动任务",
+      "label": "当前 Runner 任务；目标由父 CLI 启动子 CLI",
       "variant": "emphasis",
       "route": "orthogonal-h",
       "labelDy": 60
     },
     {
       "id": "chat-provider",
-      "from": "chat_api",
+      "from": "thread_agent",
       "to": "provider",
-      "label": "Responses turn",
+      "label": "父 CLI → WebCodex → Ego Browser",
       "variant": "emphasis",
-      "route": "orthogonal-h"
+      "route": "orthogonal-v",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "chat-thread-agent",
+      "from": "chat_api",
+      "to": "thread_agent",
+      "label": "MCP route → Router Codex CLI（父）",
+      "variant": "emphasis",
+      "route": "orthogonal-v",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDx": 30
+    },
+    {
+      "id": "thread-runner",
+      "from": "thread_agent",
+      "to": "runner",
+      "label": "spawn / resume Worker Codex CLI（子）",
+      "variant": "emphasis",
+      "route": "orthogonal-v",
+      "fromSide": "bottom",
+      "toSide": "top"
     },
     {
       "id": "provider-taskspace",
       "from": "provider",
       "to": "taskspace",
-      "label": "复用登录 TaskSpace",
+      "label": "按 Project 选择唯一 Space",
       "variant": "emphasis",
       "route": "orthogonal-h",
       "labelDy": 65
@@ -286,7 +330,7 @@
       "id": "taskspace-project",
       "from": "taskspace",
       "to": "web_project",
-      "label": "首次发送创建原生 Chat",
+      "label": "首次 send 在指定 Project 创建 Chat",
       "variant": "emphasis",
       "fromSide": "bottom",
       "toSide": "top",
@@ -297,14 +341,15 @@
       "id": "runner-tools",
       "from": "runner",
       "to": "local_tools",
-      "label": "执行本地资源",
-      "route": "orthogonal-h"
+      "label": "子 CLI 读写本地 Workspace",
+      "route": "orthogonal-h",
+      "labelDy": 60
     },
     {
       "id": "fallback-provider",
       "from": "fallback",
       "to": "provider",
-      "label": "仅显式切换",
+      "label": "仅显式 fallback",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "top",
@@ -315,7 +360,7 @@
       "id": "store-provider",
       "from": "store",
       "to": "provider",
-      "label": "恢复 session 元数据",
+      "label": "恢复 session / operation 元数据",
       "variant": "dashed",
       "fromSide": "right",
       "toSide": "top",
@@ -342,26 +387,23 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "两个 Project 绑定",
+      "title": "真正的父子关系",
       "items": [
-        "project 是本地 WebCodex Runner Project",
-        "web_project_url 是可选的原生 ChatGPT Project 首页；两者语义分开"
+        "Chat 总控 → MCP → Router Codex CLI（父）；父 CLI → codex exec / resume → Worker Codex CLI（子）。"
       ]
     },
     {
       "dot": "emerald",
-      "title": "一次配置，多项目复用",
+      "title": "网页目标仍走浏览器",
       "items": [
-        "Ego Browser 账号与 TaskSpace 是运行时级配置",
-        "每个会话只选择自己的 Project URL，无需重复登录"
+        "父 CLI 不碰 DOM/Cookie；WEB_CHAT 目标走 Chat Session API → Ego Browser → Web Chat。"
       ]
     },
     {
       "dot": "rose",
-      "title": "闭环边界",
+      "title": "持久化和边界",
       "items": [
-        "Chat API 负责网页端 Chat，会话创建于 Project 首页",
-        "MCP 负责 ChatGPT 到本地工具；不自动接管既有对话"
+        "WebCodex 保存 operation、父/子 session_id 和 receipt；失败改道由 Chat 总控决定，子 CLI 不递归派发。"
       ]
     }
   ]

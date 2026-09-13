@@ -50,11 +50,16 @@ scripts/webcodex-chat-runtime.sh setup
 scripts/webcodex-chat-runtime.sh start
 ```
 
-The setup reuses the signed-in Ego Browser account and stores only the numeric
-TaskSpace ID under `~/.config/webcodex/ego` (or `$XDG_CONFIG_HOME/webcodex/ego`).
-Set `WEBCODEX_EGO_SPACE_ID` to reuse an existing TaskSpace. Do not copy cookies or
-repeat browser setup per project. On a machine without Ego Browser, use the
-explicit fallback:
+The setup reuses the signed-in Ego Browser account and stores runtime state under
+`~/.config/webcodex/ego` (or `$XDG_CONFIG_HOME/webcodex/ego`). Each local Project
+must map to one existing Ego TaskSpace in the private
+`ego/project-spaces.json`; do not copy cookies or repeat browser setup per
+project. Set `WEBCODEX_EGO_SPACE_ID` only for a single-space legacy setup. On a
+machine without Ego Browser, use the explicit fallback:
+
+Start the mapping from `config/ego/project-spaces.example.json`, replace the
+placeholder IDs with the exact local WebCodex Project IDs, and keep the result
+at `~/.config/webcodex/ego/project-spaces.json` with mode `0600`.
 
 ```bash
 export WEBCODEX_CHATGPT_WEB_PROVIDER=codex-chatgpt-web
@@ -89,7 +94,7 @@ surface smoke test](MCP.md#chatgpt-work-surface-smoke-test).
 | --- | --- | --- |
 | Rust/Cargo | Build and run WebCodex | System toolchain; repo `Cargo.toml`/`Cargo.lock` |
 | WebCodex Server/Runner | Local service | This repository or an existing deployment |
-| Ego Browser | ChatGPT Web provider | macOS app/account; TaskSpace ID in `~/.config/webcodex/ego` |
+| Ego Browser | ChatGPT Web provider | macOS app/account; Project-to-TaskSpace map in `~/.config/webcodex/ego/project-spaces.json` |
 | `codex-chatgpt-web` | Explicit provider fallback | `vendor/codex-chatgpt-web` |
 | Archify | Documentation only | `~/.agents/skills/archify` |
 | Tunnel/HTTPS | Remote access when needed | System or Desktop/deployment configuration |
@@ -112,4 +117,3 @@ node "$ARCHIFY" visual-check docs/architecture/archify/runtime.architecture.html
 ```
 
 For the complete Chinese handoff, see [AGENT_ONBOARDING.zh-CN.md](AGENT_ONBOARDING.zh-CN.md).
-

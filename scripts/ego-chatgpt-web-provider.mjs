@@ -2,14 +2,82 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createServer } from "node:http";
+import { setTimeout as sleep } from "node:timers/promises";
 
 const injected = globalThis.__WEBCODEX_PROVIDER_CONFIG || {};
+const injectedTask = globalThis.__WEBCODEX_PROVIDER_TASK || null;
 const root = resolve(injected.root || process.env.WEBCODEX_RUNTIME_HOME || `${process.env.HOME}/.config/webcodex`);
 const port = Number(injected.port || process.env.WEBCODEX_CHATGPT_WEB_PORT || 17841);
 const statePath = `${root}/ego/runtime.json`;
 const sessionsPath = `${root}/ego/sessions.json`;
+const projectSpacesPath = injected.projectSpacesPath || process.env.WEBCODEX_EGO_PROJECT_SPACES_FILE || `${root}/ego/project-spaces.json`;
 const spaceIdFromEnv = String(injected.spaceId || process.env.WEBCODEX_EGO_SPACE_ID || "").trim();
 const maxBodyBytes = 1_000_000;
+
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+const minSendIntervalMs = Math.max(0, finiteNumber(injected.minSendIntervalMs ?? process.env.WEBCODEX_CHATGPT_MIN_SEND_INTERVAL_MS, 15_000));
+const rateLimitBaseMs = Math.max(1_000, finiteNumber(injected.rateLimitBaseMs ?? process.env.WEBCODEX_CHATGPT_RATE_LIMIT_BASE_MS, 30_000));
+const rateLimitMaxMs = Math.max(rateLimitBaseMs, finiteNumber(injected.rateLimitMaxMs ?? process.env.WEBCODEX_CHATGPT_RATE_LIMIT_MAX_MS, 300_000));
+let nextSendAt = 0;
+let rateLimitStreak = 0;
+
+class RateLimitError extends Error {
+  constructor(message, retryAfterMs, safeToRetry) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfterMs = retryAfterMs;
+    this.safeToRetry = safeToRetry;
+  }
+}
+
+function isRateLimitedText(text) {
+  return /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快|rate[_ -]?limit/i.test(text || "");
+}
+
+function rateLimitDelay(streak) {
+  const exponent = Math.max(0, Math.min(8, Number(streak) - 1));
+  return Math.min(rateLimitMaxMs, rateLimitBaseMs * (2 ** exponent));
+}
+
+async function pageHasRateLimit(page) {
+  return page.evaluate(() => [...document.querySelectorAll('[role="dialog"]')]
+    .some((node) => /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快|rate[_ -]?limit/i.test(node.textContent || "")));
+}
+
+async function dismissRateLimitDialog(page) {
+  if (!await pageHasRateLimit(page)) return;
+  await page.evaluate(() => {
+    const dialog = [...document.querySelectorAll('[role="dialog"]')]
+      .find((node) => /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快|rate[_ -]?limit/i.test(node.textContent || ""));
+    const button = [...(dialog?.querySelectorAll("button") || [])]
+      .find((node) => (node.textContent || "").trim() === "Got it");
+    button?.click();
+  });
+}
+
+async function waitForSendWindow() {
+  const delay = nextSendAt - Date.now();
+  if (delay > 0) await sleep(delay);
+}
+
+function markSendStarted() {
+  nextSendAt = Date.now() + minSendIntervalMs;
+}
+
+function markSendSucceeded() {
+  rateLimitStreak = 0;
+}
+
+function markRateLimited(safeToRetry) {
+  rateLimitStreak += 1;
+  const retryAfterMs = rateLimitDelay(rateLimitStreak);
+  nextSendAt = Math.max(nextSendAt, Date.now() + retryAfterMs);
+  return new RateLimitError("ChatGPT web rate limit is active", retryAfterMs, safeToRetry);
+}
 
 function readJson(path, fallback) {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return fallback; }
@@ -26,6 +94,33 @@ function writeJson(path, value) {
 function runtimeState() { return readJson(statePath, null); }
 function sessionState() { return readJson(sessionsPath, {}); }
 
+function projectSpaceConfig() {
+  const value = readJson(projectSpacesPath, {});
+  const projects = value && typeof value.projects === "object" && value.projects !== null ? value.projects : {};
+  const defaultValue = Number(value?.default_space_id);
+  return {
+    projects,
+    defaultSpaceId: Number.isInteger(defaultValue) && defaultValue >= 0 ? defaultValue : null,
+  };
+}
+
+function configuredSpaceIds() {
+  const ids = new Set();
+  const config = projectSpaceConfig();
+  for (const value of runtimeState()?.space_ids || []) {
+    const id = Number(value);
+    if (Number.isInteger(id) && id >= 0) ids.add(id);
+  }
+  for (const value of Object.values(config.projects)) {
+    const id = Number(value);
+    if (Number.isInteger(id) && id >= 0) ids.add(id);
+  }
+  if (config.defaultSpaceId !== null) ids.add(config.defaultSpaceId);
+  const fallback = Number(spaceIdFromEnv || runtimeState()?.space_id);
+  if (Number.isInteger(fallback) && fallback >= 0) ids.add(fallback);
+  return [...ids].sort((a, b) => a - b);
+}
+
 function requireSpaceId() {
   const raw = spaceIdFromEnv || runtimeState()?.space_id;
   const value = Number(raw);
@@ -41,7 +136,13 @@ async function setupTask() {
 }
 
 async function runtimeTask() {
-  return openTaskSpace(requireSpaceId());
+  return runtimeTaskForSpace(undefined);
+}
+
+async function runtimeTaskForSpace(spaceId) {
+  const id = spaceId === undefined ? requireSpaceId() : spaceId;
+  if (injectedTask && Number(injectedTask.spaceId) === Number(id)) return injectedTask;
+  return openTaskSpace(id);
 }
 
 async function openTaskSpace(id) {
@@ -80,12 +181,9 @@ async function sessionMessages(page) {
 async function observeSession(id) {
   const sessions = sessionState();
   const saved = sessions[id];
-  if (!saved?.page_label) throw new Error("Ego Browser page for this Chat session is unavailable");
-  const task = await runtimeTask();
-  const page = task.page(saved.page_label);
-  if (!page) throw new Error("Ego Browser page for this Chat session is unavailable");
-  if (saved.url && (await page.url()) !== saved.url) await page.goto(saved.url);
-  await waitForComposer(page);
+  if (!saved?.url) throw new Error("Ego Browser Chat session is unavailable");
+  const task = await runtimeTaskForSpace(spaceIdForSession(saved, saved.project_id));
+  const page = await pageForSession(task, id, sessions, saved?.web_project_url || null);
   const messages = await sessionMessages(page);
   return {
     session_id: id,
@@ -111,26 +209,85 @@ function sessionId(payload) {
   return value;
 }
 
+function projectId(payload) {
+  const value = payload?.metadata?.webcodex_project_id;
+  if (typeof value !== "string" || !value.trim()) throw new Error("Responses metadata.webcodex_project_id is required");
+  return value.trim();
+}
+
+function spaceIdForSession(saved, projectId) {
+  const config = projectSpaceConfig();
+  const configured = projectId ? config.projects[projectId] : undefined;
+  if (saved?.space_id !== undefined && configured !== undefined && Number(saved.space_id) !== Number(configured)) {
+    throw new Error("Ego Browser TaskSpace does not match the Project binding");
+  }
+  const hasExplicitProjectMap = Object.keys(config.projects).length > 0;
+  const raw = saved?.space_id ?? configured ?? (
+    projectId && hasExplicitProjectMap
+      ? null
+      : config.defaultSpaceId ?? spaceIdFromEnv ?? runtimeState()?.space_id
+  );
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`No Ego Browser TaskSpace is configured for Project ${projectId || "unknown"}`);
+  }
+  return value;
+}
+
 async function pageForSession(task, id, sessions, webProjectUrl) {
   const saved = sessions[id];
-  if (saved?.page_label) {
-    if ((saved.web_project_url || null) !== webProjectUrl) {
-      throw new Error("web_project_url does not match the existing Chat session binding");
-    }
-    const page = task.page(saved.page_label);
-    if (!page) throw new Error("Ego Browser page for this Chat session is unavailable");
-    if (saved.url && (await page.url()) !== saved.url) await page.goto(saved.url);
-    await waitForComposer(page);
-    return page;
+  if (saved && (saved.web_project_url || null) !== webProjectUrl) {
+    throw new Error("web_project_url does not match the existing Chat session binding");
   }
-  const page = await task.newPage();
-  await page.goto(webProjectUrl || "https://chatgpt.com/");
+  if (saved?.page_label) {
+    let page;
+    try {
+      page = task.page(saved.page_label);
+    } catch (error) {
+      if (!/page .* was closed|page .* not found/i.test(String(error))) throw error;
+    }
+    if (page) {
+      try {
+        if (saved.url && (await page.url()) !== saved.url) await page.goto(saved.url);
+        await waitForComposer(page);
+        return page;
+      } catch (error) {
+        if (!/page .* was closed/i.test(String(error))) throw error;
+      }
+    }
+    delete saved.page_label;
+    writeJson(sessionsPath, sessions);
+  }
+  let page;
+  try {
+    page = await task.newPage();
+  } catch (error) {
+    if (!/page budget reached/i.test(String(error))) throw error;
+    const victim = Object.entries(sessions).find(([sessionId, value]) => sessionId !== id && value?.page_label
+      && (task.spaceId === undefined || Number(value.space_id) === Number(task.spaceId)));
+    if (!victim) throw error;
+    const victimPage = task.page(victim[1].page_label);
+    if (victimPage) {
+      try { await victimPage.close(); } catch (closeError) {
+        if (!/page .* was closed/i.test(String(closeError))) throw closeError;
+      }
+    }
+    delete victim[1].page_label;
+    writeJson(sessionsPath, sessions);
+    page = await task.newPage();
+  }
+  await page.goto(saved?.url || webProjectUrl || "https://chatgpt.com/");
   await waitForComposer(page);
+  if (saved) {
+    saved.page_label = page.label;
+    writeJson(sessionsPath, sessions);
+  }
   return page;
 }
 
 async function runResponse(payload) {
   const id = sessionId(payload);
+  const project = projectId(payload);
   const text = userText(payload);
   const model = typeof payload.model === "string" && payload.model.trim() ? payload.model : "ego-chatgpt-web";
   const webProjectUrl = typeof payload.metadata?.web_project_url === "string" && payload.metadata.web_project_url.trim()
@@ -138,20 +295,33 @@ async function runResponse(payload) {
     : null;
   const sessions = sessionState();
   const saved = sessions[id];
+  if (saved?.project_id && saved.project_id !== project) {
+    throw new Error("webcodex_project_id does not match the existing Chat session binding");
+  }
+  const spaceId = spaceIdForSession(saved, project);
   if (payload.previous_response_id && payload.previous_response_id !== saved?.response_id) {
     throw new Error("previous_response_id does not match the Ego Browser session state");
   }
-  const task = await runtimeTask();
+  const task = await runtimeTaskForSpace(spaceId);
+  await waitForSendWindow();
   const page = await pageForSession(task, id, sessions, webProjectUrl);
+  await dismissRateLimitDialog(page);
   const before = await currentTurnCount(page);
+  const rateLimitDeadline = Date.now() + 60_000;
+  markSendStarted();
   await page.fill("loc=css:#prompt-textarea", text);
-  await page.press("loc=css:#prompt-textarea", "Enter");
-  await page.waitForFunction((turnCount) => {
+  await page.click('loc=css:button[aria-label="Send prompt"]');
+  await page.waitForFunction(({ turnCount, rateLimitDeadline: deadline }) => {
     const turns = document.querySelectorAll('[data-turn="assistant"]');
     const latest = turns[turns.length - 1];
+    const message = latest?.querySelector('[data-message-author-role="assistant"]');
+    const text = message?.textContent?.trim() || "";
     const stop = document.querySelector('button[aria-label="Stop answering"]');
-    return turns.length > turnCount && !stop && Boolean(latest?.textContent?.trim());
-  }, before, { timeout: 180_000 });
+    const rateLimited = /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快/i.test(document.body?.innerText || "");
+    const placeholder = /^(?:pro\s+thinking|thinking|思考中|正在思考)\s*$/i.test(text);
+    const ready = turns.length > turnCount && !stop && Boolean(text) && !placeholder;
+    return ready || (!ready && turns.length <= turnCount && rateLimited && Date.now() >= deadline);
+  }, { turnCount: before, rateLimitDeadline }, { timeout: 180_000 });
   const result = await page.evaluate(() => {
     const turns = [...document.querySelectorAll('[data-turn="assistant"]')];
     const turn = turns.at(-1);
@@ -161,10 +331,20 @@ async function runResponse(payload) {
       messageId: message?.getAttribute("data-message-id") || null,
     };
   });
+  if (!result.text && await pageHasRateLimit(page)) throw markRateLimited(false);
   if (!result.text) throw new Error("Ego Browser returned an empty assistant turn");
   const responseId = `ego_${createHash("sha256").update(`${id}\0${result.messageId || result.text}`).digest("hex").slice(0, 32)}`;
-  sessions[id] = { page_label: page.label, url: await page.url(), response_id: responseId, web_project_url: webProjectUrl };
+  sessions[id] = {
+    ...(saved || {}),
+    page_label: page.label,
+    url: await page.url(),
+    response_id: responseId,
+    project_id: project,
+    space_id: spaceId,
+    web_project_url: webProjectUrl,
+  };
   writeJson(sessionsPath, sessions);
+  markSendSucceeded();
   return {
     id: responseId,
     object: "response",
@@ -185,9 +365,9 @@ async function readBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-function send(response, status, value) {
+function send(response, status, value, extraHeaders = {}) {
   const body = JSON.stringify(value);
-  response.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+  response.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(body), ...extraHeaders });
   response.end(body);
 }
 
@@ -202,7 +382,8 @@ async function serve() {
   const queue = { tail: Promise.resolve() };
   const server = createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/healthz") {
-      send(response, 200, { ok: true, provider: "ego-browser", space_id: requireSpaceId() });
+      const spaceIds = configuredSpaceIds();
+      send(response, 200, { ok: true, provider: "ego-browser", space_ids: spaceIds, space_id: spaceIds.length === 1 ? spaceIds[0] : null });
       return;
     }
     if (request.method === "POST" && request.url === "/shutdown") {
@@ -214,7 +395,9 @@ async function serve() {
       try {
         const url = new URL(request.url, "http://127.0.0.1");
         const id = sessionIdFromPath(url.pathname);
-        const result = await observeSession(id);
+        const result = await new Promise((resolveResult, rejectResult) => {
+          queue.tail = queue.tail.then(() => observeSession(id).then(resolveResult, rejectResult));
+        });
         send(response, 200, result);
       } catch (error) {
         send(response, 502, { error: { message: error instanceof Error ? error.message : String(error) } });
@@ -232,7 +415,14 @@ async function serve() {
       });
       send(response, 200, result);
     } catch (error) {
-      send(response, 502, { error: { message: error instanceof Error ? error.message : String(error) } });
+      if (error instanceof RateLimitError) {
+        const code = error.safeToRetry ? "preflight_rate_limited" : "turn_rate_limited";
+        send(response, 429, {
+          error: { code, message: error.message, retry_after_ms: error.retryAfterMs },
+        }, { "retry-after": String(Math.ceil(error.retryAfterMs / 1000)) });
+      } else {
+        send(response, 502, { error: { message: error instanceof Error ? error.message : String(error) } });
+      }
     }
   });
   await new Promise((resolveServer) => server.listen(port, "127.0.0.1", resolveServer));
@@ -258,11 +448,18 @@ async function status() {
     process.stdout.write(JSON.stringify({ configured: false, provider: "ego-browser" }) + "\n");
     return;
   }
-  const task = await runtimeTask();
-  process.stdout.write(JSON.stringify({ configured: true, provider: "ego-browser", space_id: requireSpaceId(), pages: (await task.pages()).map((page) => page.label) }) + "\n");
+  const spaces = [];
+  for (const spaceId of configuredSpaceIds()) {
+    const task = await runtimeTaskForSpace(spaceId);
+    spaces.push({ space_id: spaceId, pages: (await task.pages()).map((page) => page.label) });
+  }
+  process.stdout.write(JSON.stringify({ configured: true, provider: "ego-browser", spaces }) + "\n");
 }
 
 const mode = injected.mode || process.env.WEBCODEX_EGO_PROVIDER_MODE || process.argv[2] || "serve";
-if (mode === "setup") await setup();
+if (mode === "test") { /* Import-only mode for page lifecycle checks. */ }
+else if (mode === "setup") await setup();
 else if (mode === "status") await status();
 else await serve();
+
+export { pageForSession, spaceIdForSession };

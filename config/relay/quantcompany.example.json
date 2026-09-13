@@ -8,5 +8,7 @@
     "QC03": "wc_chat_REPLACE_ME",
     "QC05": "wc_chat_REPLACE_ME"
   },
-  "poll_ms": 2000
+  "poll_ms": 5000,
+  "min_send_interval_ms": 15000,
+  "rate_limit_backoff_ms": 30000
 }
