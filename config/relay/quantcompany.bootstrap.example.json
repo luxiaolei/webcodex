@@ -10,5 +10,8 @@
     "QC02": { "title": "Quant Company - QC02", "web_project_url": "https://chatgpt.com/g/g-p-6aa272fd978c819185de9d1e8778ba2f/project" },
     "QC03": { "title": "Quant Company - QC03", "web_project_url": "https://chatgpt.com/g/g-p-6aa272fd978c819185de9d1e8778ba2f/project" },
     "QC05": { "title": "Quant Company - QC05", "web_project_url": "https://chatgpt.com/g/g-p-6aa272fd978c819185de9d1e8778ba2f/project" }
-  }
+  },
+  "poll_ms": 5000,
+  "min_send_interval_ms": 15000,
+  "rate_limit_backoff_ms": 30000
 }

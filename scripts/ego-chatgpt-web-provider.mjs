@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createServer } from "node:http";
+import { setTimeout as sleep } from "node:timers/promises";
 
 const injected = globalThis.__WEBCODEX_PROVIDER_CONFIG || {};
 const root = resolve(injected.root || process.env.WEBCODEX_RUNTIME_HOME || `${process.env.HOME}/.config/webcodex`);
@@ -10,6 +11,60 @@ const statePath = `${root}/ego/runtime.json`;
 const sessionsPath = `${root}/ego/sessions.json`;
 const spaceIdFromEnv = String(injected.spaceId || process.env.WEBCODEX_EGO_SPACE_ID || "").trim();
 const maxBodyBytes = 1_000_000;
+
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+const minSendIntervalMs = Math.max(0, finiteNumber(injected.minSendIntervalMs ?? process.env.WEBCODEX_CHATGPT_MIN_SEND_INTERVAL_MS, 15_000));
+const rateLimitBaseMs = Math.max(1_000, finiteNumber(injected.rateLimitBaseMs ?? process.env.WEBCODEX_CHATGPT_RATE_LIMIT_BASE_MS, 30_000));
+const rateLimitMaxMs = Math.max(rateLimitBaseMs, finiteNumber(injected.rateLimitMaxMs ?? process.env.WEBCODEX_CHATGPT_RATE_LIMIT_MAX_MS, 300_000));
+let nextSendAt = 0;
+let rateLimitStreak = 0;
+
+class RateLimitError extends Error {
+  constructor(message, retryAfterMs, safeToRetry) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfterMs = retryAfterMs;
+    this.safeToRetry = safeToRetry;
+  }
+}
+
+function isRateLimitedText(text) {
+  return /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快|rate[_ -]?limit/i.test(text || "");
+}
+
+function rateLimitDelay(streak) {
+  const exponent = Math.max(0, Math.min(8, Number(streak) - 1));
+  return Math.min(rateLimitMaxMs, rateLimitBaseMs * (2 ** exponent));
+}
+
+async function pageHasRateLimit(page) {
+  const text = await page.evaluate(() => document.body?.innerText || "");
+  return isRateLimitedText(text);
+}
+
+async function waitForSendWindow() {
+  const delay = nextSendAt - Date.now();
+  if (delay > 0) await sleep(delay);
+}
+
+function markSendStarted() {
+  nextSendAt = Date.now() + minSendIntervalMs;
+}
+
+function markSendSucceeded() {
+  rateLimitStreak = 0;
+}
+
+function markRateLimited(safeToRetry) {
+  rateLimitStreak += 1;
+  const retryAfterMs = rateLimitDelay(rateLimitStreak);
+  nextSendAt = Math.max(nextSendAt, Date.now() + retryAfterMs);
+  return new RateLimitError("ChatGPT web rate limit is active", retryAfterMs, safeToRetry);
+}
 
 function readJson(path, fallback) {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return fallback; }
@@ -142,16 +197,21 @@ async function runResponse(payload) {
     throw new Error("previous_response_id does not match the Ego Browser session state");
   }
   const task = await runtimeTask();
+  await waitForSendWindow();
   const page = await pageForSession(task, id, sessions, webProjectUrl);
+  if (await pageHasRateLimit(page)) throw markRateLimited(true);
   const before = await currentTurnCount(page);
+  markSendStarted();
   await page.fill("loc=css:#prompt-textarea", text);
   await page.press("loc=css:#prompt-textarea", "Enter");
   await page.waitForFunction((turnCount) => {
     const turns = document.querySelectorAll('[data-turn="assistant"]');
     const latest = turns[turns.length - 1];
     const stop = document.querySelector('button[aria-label="Stop answering"]');
-    return turns.length > turnCount && !stop && Boolean(latest?.textContent?.trim());
+    const rateLimited = /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快/i.test(document.body?.innerText || "");
+    return rateLimited || (turns.length > turnCount && !stop && Boolean(latest?.textContent?.trim()));
   }, before, { timeout: 180_000 });
+  if (await pageHasRateLimit(page)) throw markRateLimited(false);
   const result = await page.evaluate(() => {
     const turns = [...document.querySelectorAll('[data-turn="assistant"]')];
     const turn = turns.at(-1);
@@ -165,6 +225,7 @@ async function runResponse(payload) {
   const responseId = `ego_${createHash("sha256").update(`${id}\0${result.messageId || result.text}`).digest("hex").slice(0, 32)}`;
   sessions[id] = { page_label: page.label, url: await page.url(), response_id: responseId, web_project_url: webProjectUrl };
   writeJson(sessionsPath, sessions);
+  markSendSucceeded();
   return {
     id: responseId,
     object: "response",
@@ -185,9 +246,9 @@ async function readBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-function send(response, status, value) {
+function send(response, status, value, extraHeaders = {}) {
   const body = JSON.stringify(value);
-  response.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+  response.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(body), ...extraHeaders });
   response.end(body);
 }
 
@@ -232,7 +293,14 @@ async function serve() {
       });
       send(response, 200, result);
     } catch (error) {
-      send(response, 502, { error: { message: error instanceof Error ? error.message : String(error) } });
+      if (error instanceof RateLimitError) {
+        const code = error.safeToRetry ? "preflight_rate_limited" : "turn_rate_limited";
+        send(response, 429, {
+          error: { code, message: error.message, retry_after_ms: error.retryAfterMs },
+        }, { "retry-after": String(Math.ceil(error.retryAfterMs / 1000)) });
+      } else {
+        send(response, 502, { error: { message: error instanceof Error ? error.message : String(error) } });
+      }
     }
   });
   await new Promise((resolveServer) => server.listen(port, "127.0.0.1", resolveServer));

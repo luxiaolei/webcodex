@@ -31,6 +31,9 @@ test("profile validation keeps project routing explicit", () => {
     const config = loadConfig(path);
     assert.equal(config.profile, "hz-os");
     assert.equal(config.targets.PR15, "wc_chat_pr15");
+    assert.equal(config.poll_ms, 5000);
+    assert.equal(config.min_send_interval_ms, 15000);
+    assert.equal(config.rate_limit_backoff_ms, 30000);
     await rm(path);
   });
 });
@@ -64,4 +67,38 @@ test("processMessage sends the exact source body and replies to the controller",
   assert.equal(state.events.u1.state, "replied");
   const saved = JSON.parse(await readFile(statePath, "utf8"));
   assert.equal(saved.events.u1.result_body, "已完成");
+});
+
+test("preflight rate limits are checkpointed and safely retried", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-rate-limit-"));
+  const statePath = join(root, "state.json");
+  const state = { version: 1, profile: "quantcompany", ignored_message_ids: [], events: {} };
+  const config = {
+    api_url: "http://webcodex.test",
+    provider_url: "http://provider.test",
+    profile: "quantcompany",
+    controller_session: "wc_chat_controller",
+    targets: { QC02: "wc_chat_qc02" },
+    min_send_interval_ms: 0,
+    rate_limit_backoff_ms: 1_000,
+  };
+  const oldFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) return Response.json({ error: { code: "preflight_rate_limited", retry_after_ms: 1 } }, { status: 429 });
+    if (calls % 2 === 0) return Response.json({ operation_id: `op-${calls}` }, { status: 202 });
+    return Response.json({ state: "completed", assistant_body: "本地结果" });
+  };
+  try {
+    const message = { message_id: "u-rate", role: "user", text: "[to:QC02]\n读取状态" };
+    await processMessage(config, state, message, statePath);
+    assert.equal(state.events["u-rate"].state, "rate_limited");
+    state.events["u-rate"].retry_at = 0;
+    await processMessage(config, state, message, statePath);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+  assert.equal(state.events["u-rate"].state, "replied");
+  assert.equal(state.events["u-rate"].result_body, "本地结果");
 });

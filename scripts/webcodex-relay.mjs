@@ -13,6 +13,24 @@ const defaultApi = "http://127.0.0.1:8080";
 const defaultProvider = "http://127.0.0.1:17841";
 const maxMessageChars = 32_768;
 const maxWaitMs = 180_000;
+const defaultPollMs = 5_000;
+const defaultMinSendIntervalMs = 15_000;
+const defaultRateLimitBackoffMs = 30_000;
+const maxRateLimitBackoffMs = 300_000;
+
+function boundedNumber(value, fallback, minimum, maximum) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback;
+}
+
+class RateLimitError extends Error {
+  constructor(message, retryAfterMs, safeToRetry = false) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfterMs = retryAfterMs;
+    this.safeToRetry = safeToRetry;
+  }
+}
 
 function readJson(path, fallback) {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return fallback; }
@@ -46,7 +64,9 @@ function loadConfig(path) {
     controller_session: config.controller_session,
     targets: config.targets,
     aliases,
-    poll_ms: Math.max(500, Math.min(60_000, Number(config.poll_ms || 2_000))),
+    poll_ms: boundedNumber(config.poll_ms ?? defaultPollMs, defaultPollMs, 1_000, 60_000),
+    min_send_interval_ms: boundedNumber(config.min_send_interval_ms ?? defaultMinSendIntervalMs, defaultMinSendIntervalMs, 0, 300_000),
+    rate_limit_backoff_ms: boundedNumber(config.rate_limit_backoff_ms ?? defaultRateLimitBackoffMs, defaultRateLimitBackoffMs, 1_000, maxRateLimitBackoffMs),
   };
 }
 
@@ -63,6 +83,7 @@ function loadState(path, config) {
     controller_cursor: state.controller_cursor || null,
     ignored_message_ids: Array.isArray(state.ignored_message_ids) ? state.ignored_message_ids : [],
     events: state.events && typeof state.events === "object" ? state.events : {},
+    next_send_at: Number.isFinite(state.next_send_at) ? state.next_send_at : 0,
     updated_at: state.updated_at || null,
   };
 }
@@ -98,7 +119,19 @@ async function requestJson(url, options = {}) {
   const response = await fetch(url, options);
   let body;
   try { body = await response.json(); } catch { body = {}; }
-  if (!response.ok) throw new Error(`${response.status} ${body?.error?.message || body?.message || response.statusText}`);
+  if (!response.ok) {
+    if (response.status === 429 || body?.error?.code === "preflight_rate_limited") {
+      const retryAfterMs = Number(body?.error?.retry_after_ms)
+        || Number(response.headers.get("retry-after")) * 1_000
+        || defaultRateLimitBackoffMs;
+      throw new RateLimitError(
+        `${response.status} ${body?.error?.message || body?.message || "rate limited"}`,
+        retryAfterMs,
+        body?.error?.code === "preflight_rate_limited",
+      );
+    }
+    throw new Error(`${response.status} ${body?.error?.message || body?.message || response.statusText}`);
+  }
   return body;
 }
 
@@ -112,7 +145,26 @@ async function observe(config) {
   return requestJson(`${config.provider_url}/v1/sessions/${config.controller_session}/messages`, { headers: headers(config) });
 }
 
-async function sendSession(config, sessionId, body, idempotencyKey) {
+async function waitForSendWindow(config, state, path) {
+  const delay = state.next_send_at - Date.now();
+  if (delay > 0) await sleep(delay);
+  state.next_send_at = Date.now() + (Number.isFinite(config.min_send_interval_ms) ? config.min_send_interval_ms : 0);
+  saveState(path, state);
+}
+
+function operationError(operation) {
+  return `${operation.error_kind || ""} ${operation.error_message || ""}`;
+}
+
+function rateLimitFromOperation(operation, config) {
+  const text = operationError(operation);
+  if (!/429|rate[_ -]?limit|too many requests|请求太快|请求过快/i.test(text)) return null;
+  const safeToRetry = /preflight_rate_limited/i.test(text);
+  return new RateLimitError(text || "Chat operation was rate limited", config.rate_limit_backoff_ms, safeToRetry);
+}
+
+async function sendSession(config, state, path, sessionId, body, idempotencyKey) {
+  await waitForSendWindow(config, state, path);
   const started = await requestJson(`${config.api_url}/api/chat/session`, {
     method: "POST",
     headers: headers(config),
@@ -130,6 +182,8 @@ async function sendSession(config, sessionId, body, idempotencyKey) {
     });
     if (operation.state === "completed") return operation.assistant_body || "";
     if (operation.state === "failed" || operation.state === "unknown") {
+      const rateLimit = rateLimitFromOperation(operation, config);
+      if (rateLimit) throw rateLimit;
       throw new Error(`Chat operation ${operation.state}: ${operation.error_message || operation.error_kind || "no detail"}`);
     }
     await sleep(1000);
@@ -143,8 +197,12 @@ function thinkingFailed(text) {
 
 async function processMessage(config, state, message, path) {
   const key = messageKey(message);
-  if (state.events[key]) return;
+  const existing = state.events[key];
+  const retryable = existing && (existing.state === "rate_limited" || existing.state === "reply_rate_limited")
+    && Number(existing.retry_at || 0) <= Date.now();
+  if (existing && !retryable) return;
   if (message.role !== "user") {
+    if (existing) return;
     state.ignored_message_ids.push(key);
     saveState(path, state);
     return;
@@ -160,21 +218,30 @@ async function processMessage(config, state, message, path) {
     saveState(path, state);
     return;
   }
-  const event = state.events[key] = {
+  const event = existing || (state.events[key] = {
     state: "forwarding",
     source_message_id: key,
     source_body: message.text,
     target_alias: route.alias,
     target_session_id: route.sessionId,
+    attempts: 0,
     updated_at: new Date().toISOString(),
-  };
+  });
   saveState(path, state);
   try {
-    let result = await sendSession(config, route.sessionId, message.text, `${config.profile}:${key}:forward`);
+    const attempt = Number(event.attempts || 0) + 1;
+    event.attempts = attempt;
+    let result;
+    if (event.state === "reply_rate_limited" && event.result_body) {
+      result = event.result_body;
+    } else {
+      const suffix = attempt > 1 ? `:retry:${attempt}` : "";
+      result = await sendSession(config, state, path, route.sessionId, message.text, `${config.profile}:${key}:forward${suffix}`);
+    }
     event.retried = false;
     if (thinkingFailed(result)) {
       event.retried = true;
-      result = await sendSession(config, route.sessionId, "continue", `${config.profile}:${key}:continue`);
+      result = await sendSession(config, state, path, route.sessionId, "continue", `${config.profile}:${key}:continue:${attempt}`);
     }
     event.state = "forwarded";
     event.result_body = result;
@@ -182,18 +249,25 @@ async function processMessage(config, state, message, path) {
     saveState(path, state);
     const reply = `[from:${route.alias}]\n${result}`.slice(0, maxMessageChars);
     try {
-      await sendSession(config, config.controller_session, reply, `${config.profile}:${key}:reply`);
+      await sendSession(config, state, path, config.controller_session, reply, `${config.profile}:${key}:reply:${attempt}`);
       event.state = "replied";
+      delete event.retry_at;
       event.updated_at = new Date().toISOString();
       saveState(path, state);
     } catch (error) {
-      event.state = "reply_unknown";
+      event.state = error instanceof RateLimitError && error.safeToRetry ? "reply_rate_limited" : "reply_unknown";
       event.error = String(error);
+      if (event.state === "reply_rate_limited") event.retry_at = Date.now() + error.retryAfterMs;
       event.updated_at = new Date().toISOString();
       saveState(path, state);
     }
   } catch (error) {
-    event.state = "unknown";
+    if (error instanceof RateLimitError && error.safeToRetry) {
+      event.state = "rate_limited";
+      event.retry_at = Date.now() + error.retryAfterMs;
+    } else {
+      event.state = "unknown";
+    }
     event.error = String(error);
     event.updated_at = new Date().toISOString();
     saveState(path, state);

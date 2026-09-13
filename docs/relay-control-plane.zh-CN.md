@@ -51,6 +51,8 @@ WEBCODEX_TOKEN="..." \
 
 worker 把整段原文发送给目标，等待 WebCodex operation 进入 `completed`，再把 `[from:QC02]` 加到回执前并发送回总控。若目标返回 `Thinking failed`，只在同一目标 Chat 发送一次 `continue`；仍不明确就保留 `unknown`。自动回复失败会进入 `reply_unknown`，不会声称已送达。
 
+网页端请求由 provider 和 relay 两层共同限速：同一 TaskSpace 的发送默认至少间隔 15 秒；看到 ChatGPT 的 “Too many requests” 或 429 时，安全的发送前失败会进入 `rate_limited`，回执阶段会进入 `reply_rate_limited`，按 30 秒、60 秒、120 秒递增等待，最长 5 分钟后再恢复。已经提交到网页端、但结果不明的 turn 不会自动重放，会保留为 `unknown`，避免重复执行本地任务。需要调整时，在运行时 profile 中设置 `min_send_interval_ms` 和 `rate_limit_backoff_ms`；轮询默认是 5 秒。
+
 ## 切换旧 relay
 
 先用 `--once` 做单轮检查，再让新 profile 连续运行。确认总控收到一条 `[from:...]` 回执、目标 Chat 收到原文、检查点落盘后，暂停旧的 `quantcompany-relay` 或 `hz-os` heartbeat。不要在新 worker 尚未产生真实回执前停掉旧控制面。

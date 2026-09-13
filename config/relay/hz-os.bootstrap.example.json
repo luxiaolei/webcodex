@@ -15,5 +15,8 @@
     "PR15": ["收敛技术 PR15"],
     "PRODUCT_MAP": ["设计全业务产品地图"],
     "LOCAL_RUNTIME": ["本地运行与验收"]
-  }
+  },
+  "poll_ms": 5000,
+  "min_send_interval_ms": 15000,
+  "rate_limit_backoff_ms": 30000
 }
