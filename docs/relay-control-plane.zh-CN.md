@@ -8,6 +8,8 @@ WebCodex 的统一 Chat runtime 现在可以接管原来由人工或 heartbeat �
 
 当前 relay 是执行面，不是 GitHub 规划器。它只处理总控消息中的显式 `[to:ALIAS]` 或 profile 已登记的别名，按固定 alias → `wc_chat_*` 映射调用目标 Chat，等待 operation 完成，再把 `[from:ALIAS]` 回贴总控。每个 profile 一个 worker，并在该 Project 绑定的 Ego TaskSpace 中串行发送、限速和落 checkpoint。它不会自行轮询 GitHub、判断哪个工作包已完成、在 Chat 与本地 MCP 之间选路，也不会自动决定哪些任务并行或串行。
 
+结构化 `destination.kind=web_chat` 已纳入同一执行面；`destination.kind=local_runner` 当前会明确记录为 `rejected`，直到统一 `route_dispatch` worker 发布。需要本地 Codex CLI 时，先使用 ChatGPT Work → WebCodex MCP → Runner 的独立任务链，不要把被拒绝的 relay 事件当作已执行。
+
 “总控读 Issue 后自动选 Chat、Session 或本地工具”的规划发生在网页端总控 Chat：它读取 GitHub，决定目标、串行/并行和验收，再生成显式 `[to:ALIAS]` 或结构化 `destination`。本地 Thread Agent 是轻量适配器，只校验这个目标、原文转发并等待 operation/task receipt；它不读取 GitHub、不生成 RouteDecision、不改变总控决定。当前实现提供 durable Chat relay 和独立的 ChatGPT Work → WebCodex MCP → Runner 路径；未产生真实 operation、工具结果和 Issue/PR 回写前，不应声称任务已推进。
 
 ## 边界
@@ -79,3 +81,9 @@ node --check scripts/webcodex-relay-init.mjs
 真实验收要分别确认：新 Chat 的 Project URL、目标 Chat 的 Project URL、WebCodex operation 状态、目标回执、总控自动回复和 checkpoint。浏览器页面被用户接管时，provider 必须停止并把事件保留为 `unknown`，不能抢回 TaskSpace。
 
 每个项目的完整 session/Runner 清单保存在本机的 0600 catalog 中，而不是 Git：`~/.config/webcodex/config/quantcompany-catalog.json` 和 `~/.config/webcodex/config/hz-os-catalog.json`。`active` 才能派发；`created_unbound` 表示 WebCodex session 已建但还没有在 Ego Page 上完成首次 bootstrap；`blocked` 或 `pending_router_binding` 只能回报缺口，不能自动发送。测试 Chat 归档后必须从 catalog 删除，不能只从浏览器页面关闭。
+
+## 已验证的闭环（2026-09-13）
+
+- **网页 Chat relay：通过。** 在隔离的 WebCodex Server、Ego Browser Provider 和 QuantCompany Project 上，结构化 `web_chat` 路由被程序化解析，发送到指定目标 Chat；目标返回后，relay 将 `[from:ALIAS]` 回传总控。`operation` 完成、总控 `read` 可见完整消息链，发送间隔按 30 秒测试配置执行，未出现新的 429。
+- **Chat/MCP → 本地 Runner → Codex CLI：通过。** `task_start`、`files_list`、`commands/run` 成功在隔离 Project 中启动本地 `codex exec` 只读任务，进程以退出码 0 完成。该仓库没有可识别的 validation recipe，因此没有伪造 `task_finish` 成功；任务已清理取消，且没有修改工作树。
+- **统一 `local_runner` relay：尚未实现。** 当前 relay 对这类路由 fail-closed；这不是网页 relay 或独立 MCP 本地任务链的失败。

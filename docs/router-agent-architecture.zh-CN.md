@@ -1,6 +1,6 @@
 # 总控、路由 Agent 与执行端
 
-这套系统把“决定下一步”和“执行下一步”分开。网页 Chat 总控读取 GitHub Issue/PR 和项目状态，决定目标、优先级、串行/并行方式和验收边界，并把这些决定写进显式派发消息。本地 Thread Agent 只是轻量执行适配器：解析并校验总控给出的目标，原文转发到指定 Chat 或本地 Runner，再回传真实收据。
+这套系统把“决定下一步”和“执行下一步”分开。网页 Chat 总控读取 GitHub Issue/PR 和项目状态，决定目标、优先级、串行/并行方式和验收边界，并把这些决定写进显式派发消息。本地 Thread Agent 只是轻量执行适配器：解析并校验总控给出的目标；当前已实现网页 Chat relay，ChatGPT Work 调用本地 Runner 则走独立 MCP 任务链。统一的本地目标转发仍由后续 `route_dispatch` 接口承接。
 
 ## 先用白话看调用链
 
@@ -58,7 +58,7 @@ GitHub Issue / PR / 评论
 
 总控 Chat 负责读取 GitHub 台账和运行状态，决定下一步的目标、优先级、串行/并行方式与验收边界。它必须把目标写成 `[to:ALIAS]`（或结构化 `destination`），并保留 Issue/PR、版本和验收依据；不能用一句“已完成”替代 operation 或 Runner 收据。
 
-Router Codex CLI 不是第二个项目总控，也不读取 GitHub。它只接受总控已经生成的派发信封，校验目标属于当前 Project 和 Ego TaskSpace，然后启动 Worker Codex CLI，或调用 WebCodex relay/provider，把原文发送到指定网页 Chat，等待 operation/task receipt 并回报：
+Router Codex CLI 不是第二个项目总控，也不读取 GitHub。它只接受总控已经生成的派发信封，校验目标属于当前 Project 和 Ego TaskSpace。统一接口实现后，它才会按目标启动 Worker Codex CLI 或调用 WebCodex relay/provider；当前网页目标可以由 relay 执行，本地目标仍通过独立 `task_start` MCP 任务链执行，二者都等待 operation/task receipt 并回报：
 
 ```json
 {

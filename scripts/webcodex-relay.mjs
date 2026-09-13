@@ -276,7 +276,7 @@ async function processMessage(config, state, message, path) {
     event.retried = false;
     if (thinkingFailed(result)) {
       event.retried = true;
-      result = await sendSession(config, state, path, route.sessionId, "continue", `${config.profile}:${key}:continue:${attempt}`);
+      result = await sendSession(config, state, path, routed.sessionId, "continue", `${config.profile}:${key}:continue:${attempt}`);
     }
     event.state = "forwarded";
     event.result_body = result;

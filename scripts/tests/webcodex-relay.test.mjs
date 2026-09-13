@@ -142,6 +142,55 @@ test("processMessage repairs malformed structured content once before forwarding
   assert.equal(state.events["repair-1"].state, "replied");
 });
 
+test("thinking failures continue on the routed target before replying", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-thinking-failed-"));
+  const statePath = join(root, "state.json");
+  const state = { version: 1, profile: "quantcompany", ignored_message_ids: [], events: {} };
+  const config = {
+    api_url: "http://webcodex.test",
+    provider_url: "http://provider.test",
+    profile: "quantcompany",
+    controller_session: "wc_chat_controller",
+    targets: { QC02: "wc_chat_qc02" },
+    min_send_interval_ms: 0,
+  };
+  const calls = [];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push({ url, body });
+    if (body.action === "send" && body.session_id === "wc_chat_qc02" && body.body !== "continue") {
+      return Response.json({ operation_id: "wc_chat_op_forward" }, { status: 202 });
+    }
+    if (body.action === "operation" && body.operation_id === "wc_chat_op_forward") {
+      return Response.json({ state: "completed", assistant_body: "Thinking failed" });
+    }
+    if (body.action === "send" && body.session_id === "wc_chat_qc02" && body.body === "continue") {
+      return Response.json({ operation_id: "wc_chat_op_continue" }, { status: 202 });
+    }
+    if (body.action === "operation" && body.operation_id === "wc_chat_op_continue") {
+      return Response.json({ state: "completed", assistant_body: "继续结果" });
+    }
+    if (body.action === "send" && body.session_id === "wc_chat_controller") {
+      return Response.json({ operation_id: "wc_chat_op_reply" }, { status: 202 });
+    }
+    if (body.action === "operation" && body.operation_id === "wc_chat_op_reply") {
+      return Response.json({ state: "completed", assistant_body: "已回传" });
+    }
+    throw new Error(`unexpected call: ${JSON.stringify(body)}`);
+  };
+  try {
+    await processMessage(config, state, { message_id: "thinking-1", role: "user", text: "[to:QC02]\n继续处理" }, statePath);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+  assert.equal(calls[2].body.body, "continue");
+  assert.equal(calls[2].body.session_id, "wc_chat_qc02");
+  assert.equal(state.events["thinking-1"].retried, true);
+  assert.equal(state.events["thinking-1"].state, "replied");
+  assert.equal(state.events["thinking-1"].result_body, "继续结果");
+});
+
 test("preflight rate limits are checkpointed and safely retried", async () => {
   const root = await mkdtemp(join(tmpdir(), "webcodex-relay-rate-limit-"));
   const statePath = join(root, "state.json");
