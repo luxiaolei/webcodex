@@ -51,10 +51,16 @@ MCP Server 下的两类能力，并在本地执行链中保留一层父子 Codex
   `/api/chat/session`，由 Ego Browser 完成网页发送和读取。这个统一工具目前
   还没有作为现有 MCP 工具发布，文档中的“目标”不能当成已部署功能。
 
-Worker Codex CLI 不直接调用 Eagle/Ego Browser，也不应该碰网页 DOM 或 Cookie。
+Worker Codex CLI 使用 `gpt-6-astra`、`thinking=medium` 执行本地任务，不直接调用 Eagle/Ego Browser，也不应该碰网页 DOM 或 Cookie。
 浏览器只存在于本地 WebCodex 的 Provider 边界内。失败改道也由 Chat 总控根据
 失败 receipt 决定，而不是 Router 自动猜测下一个目标。Worker 默认不再启动
 孙 CLI，递归深度固定为一层。
+
+路由内容的容错顺序也固定：先解析 Chat 返回的严格 JSON；如果内容明显想表达
+结构化路由但 JSON 不合法，Router 最多调用一次 `codex exec --ephemeral` 做格式
+修复。修复器使用 `gpt-5.6-luna` 和 `thinking=xhigh`，只输出 RouteDecision，不能
+改变目标或执行任务；修复结果必须再次通过程序化校验，否则返回 `rejected`。普通
+自然语言不会因为缺少 JSON 就自动触发修复器。
 
 长任务使用 `operation_id` 或 `task_id` 查询：不要让一个 MCP 工具调用一直占用
 连接几十分钟。总控可以继续处理其他状态，之后用 `operation` / `read` 或

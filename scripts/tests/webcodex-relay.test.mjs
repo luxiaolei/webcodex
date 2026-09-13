@@ -69,6 +69,79 @@ test("processMessage sends the exact source body and replies to the controller",
   assert.equal(saved.events.u1.result_body, "已完成");
 });
 
+test("processMessage forwards the prompt from a valid structured route", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-structured-"));
+  const statePath = join(root, "state.json");
+  const state = { version: 1, profile: "quantcompany", ignored_message_ids: [], events: {} };
+  const config = {
+    api_url: "http://webcodex.test",
+    provider_url: "http://provider.test",
+    token: "test-token",
+    profile: "quantcompany",
+    controller_session: "wc_chat_controller",
+    targets: { QC02: "wc_chat_qc02" },
+  };
+  const calls = [];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    if (calls.length % 2 === 1) return Response.json({ operation_id: `wc_chat_op_${calls.length}` }, { status: 202 });
+    return Response.json({ state: "completed", assistant_body: "结构化结果" });
+  };
+  try {
+    await processMessage(config, state, {
+      message_id: "structured-1",
+      role: "user",
+      text: JSON.stringify({
+        version: 1,
+        destination: { kind: "web_chat", alias: "QC02" },
+        prompt: "请检查数据质量",
+        mode: "serial",
+        acceptance: ["返回证据"],
+      }),
+    }, statePath);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+  assert.equal(calls[0].body.body, "请检查数据质量");
+  assert.equal(state.events["structured-1"].state, "replied");
+});
+
+test("processMessage repairs malformed structured content once before forwarding", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-repair-"));
+  const statePath = join(root, "state.json");
+  const state = { version: 1, profile: "quantcompany", ignored_message_ids: [], events: {} };
+  const config = {
+    api_url: "http://webcodex.test",
+    provider_url: "http://provider.test",
+    profile: "quantcompany",
+    controller_session: "wc_chat_controller",
+    targets: { QC02: "wc_chat_qc02" },
+    route_repair_runner: async () => JSON.stringify({
+      version: 1,
+      destination: { kind: "web_chat", alias: "QC02" },
+      prompt: "修复后转发",
+      mode: "serial",
+      acceptance: ["返回回执"],
+    }),
+  };
+  const calls = [];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    if (calls.length % 2 === 1) return Response.json({ operation_id: `wc_chat_op_${calls.length}` }, { status: 202 });
+    return Response.json({ state: "completed", assistant_body: "修复结果" });
+  };
+  try {
+    await processMessage(config, state, { message_id: "repair-1", role: "user", text: "{ malformed route" }, statePath);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+  assert.equal(calls[0].body.body, "修复后转发");
+  assert.equal(state.events["repair-1"].route_source, "codex_cli_fallback");
+  assert.equal(state.events["repair-1"].state, "replied");
+});
+
 test("preflight rate limits are checkpointed and safely retried", async () => {
   const root = await mkdtemp(join(tmpdir(), "webcodex-relay-rate-limit-"));
   const statePath = join(root, "state.json");

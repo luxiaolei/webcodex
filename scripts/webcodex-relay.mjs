@@ -9,6 +9,8 @@ import { chmodSync, closeSync, mkdirSync, openSync, readFileSync, renameSync, un
 import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import { parseRouteWithFallback } from "./webcodex-route.mjs";
+
 const defaultApi = "http://127.0.0.1:8080";
 const defaultProvider = "http://127.0.0.1:17841";
 const maxMessageChars = 32_768;
@@ -67,6 +69,13 @@ function loadConfig(path) {
     poll_ms: boundedNumber(config.poll_ms ?? defaultPollMs, defaultPollMs, 1_000, 60_000),
     min_send_interval_ms: boundedNumber(config.min_send_interval_ms ?? defaultMinSendIntervalMs, defaultMinSendIntervalMs, 0, 300_000),
     rate_limit_backoff_ms: boundedNumber(config.rate_limit_backoff_ms ?? defaultRateLimitBackoffMs, defaultRateLimitBackoffMs, 1_000, maxRateLimitBackoffMs),
+    route_repair_command: typeof config.route_repair_command === "string" && config.route_repair_command.trim()
+      ? config.route_repair_command.trim()
+      : undefined,
+    route_repair_cwd: typeof config.route_repair_cwd === "string" && config.route_repair_cwd.trim()
+      ? config.route_repair_cwd.trim()
+      : undefined,
+    route_repair_timeout_ms: boundedNumber(config.route_repair_timeout_ms ?? 30_000, 30_000, 5_000, 120_000),
   };
 }
 
@@ -113,6 +122,31 @@ function directive(body, targets, aliases = {}) {
 
 function messageKey(message) {
   return message.message_id || `${message.role}:${message.text}`;
+}
+
+function looksStructured(text) {
+  const value = String(text || "").trim();
+  return value.startsWith("{") || /^```(?:json)?\s*\n/i.test(value);
+}
+
+async function routeFromBody(body, config) {
+  const explicit = directive(body, config.targets, config.aliases);
+  if (explicit) return { ...explicit, body, route_source: "explicit_directive" };
+  if (!looksStructured(body)) return null;
+  const options = {
+    cwd: config.route_repair_cwd || process.cwd(),
+    command: config.route_repair_command,
+    timeoutMs: config.route_repair_timeout_ms,
+  };
+  if (typeof config.route_repair_runner === "function") options.runFallback = config.route_repair_runner;
+  const parsed = await parseRouteWithFallback(body, options);
+  if (parsed.route.destination.kind !== "web_chat") {
+    throw new Error("local_runner route requires the WebCodex route_dispatch worker");
+  }
+  const alias = parsed.route.destination.alias;
+  const sessionId = config.targets[alias];
+  if (!sessionId) throw new Error(`unknown relay target '${alias}'`);
+  return { alias, sessionId, body: parsed.route.prompt, route_source: parsed.source };
 }
 
 async function requestJson(url, options = {}) {
@@ -207,13 +241,13 @@ async function processMessage(config, state, message, path) {
     saveState(path, state);
     return;
   }
-  let route;
-  try { route = directive(message.text, config.targets, config.aliases); } catch (error) {
+  let routed;
+  try { routed = await routeFromBody(message.text, config); } catch (error) {
     state.events[key] = { state: "rejected", source_message_id: key, source_body: message.text, error: String(error), updated_at: new Date().toISOString() };
     saveState(path, state);
     return;
   }
-  if (!route) {
+  if (!routed) {
     state.events[key] = { state: "unrouted", source_message_id: key, source_body: message.text, updated_at: new Date().toISOString() };
     saveState(path, state);
     return;
@@ -222,8 +256,9 @@ async function processMessage(config, state, message, path) {
     state: "forwarding",
     source_message_id: key,
     source_body: message.text,
-    target_alias: route.alias,
-    target_session_id: route.sessionId,
+    target_alias: routed.alias,
+    target_session_id: routed.sessionId,
+    route_source: routed.route_source,
     attempts: 0,
     updated_at: new Date().toISOString(),
   });
@@ -236,7 +271,7 @@ async function processMessage(config, state, message, path) {
       result = event.result_body;
     } else {
       const suffix = attempt > 1 ? `:retry:${attempt}` : "";
-      result = await sendSession(config, state, path, route.sessionId, message.text, `${config.profile}:${key}:forward${suffix}`);
+      result = await sendSession(config, state, path, routed.sessionId, routed.body, `${config.profile}:${key}:forward${suffix}`);
     }
     event.retried = false;
     if (thinkingFailed(result)) {
@@ -247,7 +282,7 @@ async function processMessage(config, state, message, path) {
     event.result_body = result;
     event.updated_at = new Date().toISOString();
     saveState(path, state);
-    const reply = `[from:${route.alias}]\n${result}`.slice(0, maxMessageChars);
+    const reply = `[from:${routed.alias}]\n${result}`.slice(0, maxMessageChars);
     try {
       await sendSession(config, state, path, config.controller_session, reply, `${config.profile}:${key}:reply:${attempt}`);
       event.state = "replied";

@@ -4,7 +4,7 @@
 
 ## 先用白话看调用链
 
-这里确实有一层父子 Codex CLI：Router Codex CLI 是父会话，Worker Codex CLI 是子会话。两者都可以使用 `gpt-6-astra`、`thinking=low`，但职责不同：
+这里确实有一层父子 Codex CLI：Router Codex CLI 是父会话，Worker Codex CLI 是子会话。Router 父会话使用 `gpt-6-astra`、`thinking=low` 理解派发信封；Worker 子会话使用 `gpt-6-astra`、`thinking=medium` 执行本地任务：
 
 ```text
 Chat 总控
@@ -73,6 +73,8 @@ Router Codex CLI 不是第二个项目总控，也不读取 GitHub。它只接�
 
 上面的 `RouteDecision` 是总控 Chat 的输入，不是 Router 的重新规划结果。Router 不重新猜目标、不改写 mode、不读取 GitHub；网页目标使用固定 `alias → wc_chat_*`，本地目标使用固定 Project 和 Worker session。所有发送都有 idempotency key、operation/task id、父子 session_id 和 checkpoint。子 CLI 默认不再启动孙 CLI，递归深度固定为一层。
 
+路由消息必须优先使用严格 JSON。现有 relay 的处理顺序是：先用程序化校验解析；只有消息看起来像 JSON 但格式不合法时，才调用一次只读的 `codex exec --ephemeral` 格式修复器。修复器使用 `gpt-5.6-luna`、`thinking=xhigh`，只能把原文转换为 RouteDecision，不能换目标、规划任务或执行工具；修复结果还要重新通过同一个严格校验，仍失败就记录 `rejected`。普通没有路由标记的自然语言不会自动调用模型修复器。
+
 Receipt Store 保存总控信封、目标、尝试次数、operation/task 结果和 `unknown` 原因。Issue/PR 的读取、解释和回写仍由总控 Chat 负责；网页响应不明或 Runner 丢回执时保留 `unknown`，不盲重试。
 
 ## 并行与串行
@@ -89,4 +91,4 @@ HZ OS 的唯一协调台账是 `luxiaolei/huazhuo-blueprint#19`，运行证据�
 
 `wc_chat_*` 是 durable session；Ego Browser Page 只是临时绑定。每个 Project 绑定一个既有 TaskSpace，但一个 TaskSpace 的页面数有限，不能把所有历史 Chat 永久保持打开。生产实现应允许 Router/Provider 按需绑定空闲 Page，完成 operation 后释放 Page；归档的测试 Chat 不得继续出现在 route registry。这样可以保留完整 session 资产，同时避免页面预算和 rate limit 把路由系统锁死。
 
-当前 WebCodex relay 已完成“总控显式目标 → 指定 Web Chat/Local Runner → 回执”执行面。两个项目的本地 Thread Agent 固定使用 `gpt-6-astra`、`thinking=low`，只做上述轻量适配；GitHub 驱动的规划仍在网页端总控 Chat 内完成。
+当前 WebCodex relay 已完成“总控显式目标 → 指定 Web Chat → 回执”执行面，并支持结构化路由的程序化解析与受限格式修复。`local_runner` 的统一 `route_dispatch` 执行器仍待实现；本地 Worker 任务的目标配置是 `gpt-6-astra`、`thinking=medium`，GitHub 驱动的规划仍在网页端总控 Chat 内完成。
