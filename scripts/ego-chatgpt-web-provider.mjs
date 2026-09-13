@@ -36,12 +36,21 @@ function requireSpaceId() {
 }
 
 async function setupTask() {
-  if (spaceIdFromEnv || runtimeState()?.space_id !== undefined) return taskSpace(requireSpaceId());
+  if (spaceIdFromEnv || runtimeState()?.space_id !== undefined) return openTaskSpace(requireSpaceId());
   return taskSpace("WebCodex Runtime");
 }
 
 async function runtimeTask() {
-  return taskSpace(requireSpaceId());
+  return openTaskSpace(requireSpaceId());
+}
+
+async function openTaskSpace(id) {
+  try {
+    return await taskSpace(id);
+  } catch (error) {
+    if (typeof claimTaskSpace !== "function") throw error;
+    return claimTaskSpace(id);
+  }
 }
 
 async function waitForComposer(page) {
