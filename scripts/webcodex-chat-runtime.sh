@@ -137,7 +137,12 @@ case "${1:-status}" in
     need_command cargo
     exec cargo run --bin webcodex-server
     ;;
+  relay)
+    need_command node
+    [[ -n "${WEBCODEX_RELAY_CONFIG:-}" ]] || die "set WEBCODEX_RELAY_CONFIG to a profile JSON"
+    exec node "$ROOT/scripts/webcodex-relay.mjs" --config "$WEBCODEX_RELAY_CONFIG"
+    ;;
   *)
-    die "usage: $0 {status|setup|start}"
+    die "usage: $0 {status|setup|start|relay}"
     ;;
 esac
