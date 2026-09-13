@@ -2,14 +2,15 @@
 
 WebCodex exposes one authenticated GPT Actions/MCP-compatible endpoint:
 `POST /api/chat/session`. It keeps a caller-owned session bound to an exact
-Runner Project, starts a ChatGPT Web Responses turn through the shared signed-in
-Ego Browser provider, and retains messages and operation state in the WebCodex
-SQLite store.
+Runner Project, optionally binds the browser turn to a native ChatGPT Project,
+starts a ChatGPT Web Responses turn through the shared signed-in Ego Browser
+provider, and retains messages and operation state in the WebCodex SQLite
+store.
 
 The request uses one of four actions:
 
 ```json
-{"action":"create","title":"Research","project":"runner/project","idempotency_key":"create-1"}
+{"action":"create","title":"Research","project":"runner/project","web_project_url":"https://chatgpt.com/g/g-p-<id>-<slug>/project","idempotency_key":"create-1"}
 {"action":"send","session_id":"wc_chat_...","body":"Run the small calculation","idempotency_key":"send-1"}
 {"action":"operation","operation_id":"wc_chat_op_..."}
 {"action":"read","session_id":"wc_chat_...","after_seq":0,"limit":100}
@@ -31,9 +32,20 @@ The default provider reuses the signed-in Ego Browser TaskSpace configured by
 `WEBCODEX_CHATGPT_WEB_PROVIDER=codex-chatgpt-web` only to use the vendored
 adapter fallback.
 
-The `project` field is the WebCodex local project binding. It is validated
-against the caller-visible Runner registry. It does not assert membership in a
-native ChatGPT Project, and it does not claim that an arbitrary pre-existing
-ChatGPT conversation can be adopted. Automatic background re-entry into a
-finished ChatGPT turn remains provider/host dependent; the durable operation
-record is the source of truth for recovery.
+The two project fields have separate ownership rules:
+
+- `project` is the required WebCodex local project binding. It is validated
+  against the caller-visible Runner registry and controls local tool access.
+- `web_project_url` is optional. It must be an exact HTTPS ChatGPT Project home
+  URL ending in `/project` (for example,
+  `https://chatgpt.com/g/g-p-<id>-<slug>/project`). On the first `send`, the
+  Ego provider opens that Project home and submits the prompt; ChatGPT creates
+  the native `/c/<chat-id>` conversation there. Later sends reuse the same
+  browser page/session and must keep the same URL.
+
+If `web_project_url` is omitted, the first send opens `https://chatgpt.com/` and
+creates a normal non-Project Chat. Creating a WebCodex session alone does not
+create a native ChatGPT Chat, and an arbitrary pre-existing ChatGPT conversation
+cannot be adopted after the fact. Automatic background re-entry into a finished
+ChatGPT turn remains provider/host dependent; the durable operation record is
+the source of truth for recovery.

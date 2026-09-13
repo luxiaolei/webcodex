@@ -11,6 +11,7 @@
 - [完整使用指南](PERSONAL_SETUP.zh-CN.md) —— CLI、已有 Server、Linux 与高级普通 Server + Runner 配置
 - [AI 辅助接入](AI_ONBOARDING.zh-CN.md) —— 让 AI 帮你按普通用户语言完成配置
 - [MCP](MCP.zh-CN.md) —— ChatGPT、Claude 与其他 MCP 客户端
+- [Agent 接入与架构图](AGENT_ONBOARDING.zh-CN.md) —— 通用 Chat 桥接、MCP 闭环、依赖位置和 Archify 产物
 
 ## 我只想先试几分钟
 
@@ -38,6 +39,7 @@
 ## 我想理解或扩展 WebCodex
 
 - [架构](ARCHITECTURE.md) —— 主要组件如何协同
+- [统一 Chat 运行时](unified-chat-runtime.md) —— Ego Browser 复用和原生 ChatGPT Project 绑定
 - [Coding 工作流](CODING_WORKFLOW.zh-CN.md) —— 任务启动、指导、验证和收尾
 - [Native Tool Plugins](PLUGINS.zh-CN.md) —— 用任意可执行语言为 Runner 增加本地工具，不需要 MCP SDK
 - [Computer Use roadmap](COMPUTER_USE.md) —— semantic-first desktop automation 方向与验证优先级

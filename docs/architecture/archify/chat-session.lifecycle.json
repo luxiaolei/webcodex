@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Chat Session 与 Provider 操作生命周期",
+    "locale": "zh-CN",
+    "output": "chat-session.lifecycle.html",
+    "viewBox": [980, 630],
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "happy-path", "label": "正常发送", "focus": ["created", "waiting", "active", "completed"], "note": "从创建到网页 Chat 回复完成。" },
+      { "id": "unknown-recovery", "label": "不确定结果", "focus": ["waiting", "unknown", "reconcile", "active"], "note": "超时或空响应进入 unknown，确认后才恢复发送。" },
+      { "id": "terminal", "label": "恢复边界", "focus": ["created", "completed"], "note": "完成状态保留为可观察终点。" }
+    ]
+  },
+  "lanes": [
+    { "id": "main", "label": "Chat session" },
+    { "id": "provider", "label": "Provider wait + 对账恢复" }
+  ],
+  "states": [
+    { "id": "created", "type": "start", "label": "Created / Active", "sublabel": "已绑定本地与网页 Project", "lane": "main", "col": 0, "step": "01", "tag": "ready" },
+    { "id": "waiting", "type": "waiting", "label": "Waiting", "sublabel": "Provider 正在浏览器执行", "lane": "provider", "col": 1, "step": "02", "tag": "pending" },
+    { "id": "active", "type": "active", "label": "Active", "sublabel": "可继续发送", "lane": "main", "col": 2, "step": "03", "tag": "reusable" },
+    { "id": "completed", "type": "success", "label": "Completed", "sublabel": "assistant 消息已持久化", "lane": "main", "col": 4, "step": "04", "tag": "observed" },
+    { "id": "unknown", "type": "failure", "label": "Unknown", "sublabel": "超时 / 空响应 / Provider error", "lane": "provider", "col": 0, "yOffset": 70, "tag": "no blind retry" },
+    { "id": "reconcile", "type": "decision", "label": "Reconcile", "sublabel": "确认网页端真实结果", "lane": "provider", "col": 2, "yOffset": 70, "tag": "human/provider" }
+  ],
+  "transitions": [
+    { "id": "start-send", "from": "created", "to": "waiting", "label": "send", "variant": "emphasis", "route": "drop" },
+    { "id": "provider-ok", "from": "waiting", "to": "active", "label": "assistant output", "variant": "emphasis", "route": "drop", "labelDx": 120, "labelDy": 52 },
+    { "id": "active-completed", "from": "active", "to": "completed", "label": "persist message", "variant": "emphasis", "route": "right-channel", "labelDy": 55 },
+    { "id": "completed-active", "from": "completed", "to": "active", "label": "next send", "variant": "default", "route": "left-channel", "labelDx": 48, "labelDy": 55 },
+    { "id": "provider-unknown", "from": "waiting", "to": "unknown", "label": "timeout / malformed", "variant": "security", "route": "left-channel", "labelDy": 135 },
+    { "id": "unknown-reconcile", "from": "unknown", "to": "reconcile", "label": "reconcile", "variant": "security", "route": "straight", "labelDy": 65 },
+    { "id": "reconcile-active", "from": "reconcile", "to": "active", "label": "confirmed", "variant": "emphasis", "route": "top-channel", "labelDx": 80 }
+  ],
+  "cards": []
+}

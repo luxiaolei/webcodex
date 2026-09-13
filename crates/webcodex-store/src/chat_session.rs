@@ -9,6 +9,7 @@ pub const CHAT_OPERATION_ID_PREFIX: &str = "wc_chat_op_";
 pub const MAX_CHAT_SESSION_TITLE_CHARS: usize = 200;
 pub const MAX_CHAT_MESSAGE_BYTES: usize = 32_768;
 pub const MAX_CHAT_PROVIDER_URL_CHARS: usize = 512;
+pub const MAX_CHAT_WEB_PROJECT_URL_CHARS: usize = 512;
 pub const MAX_CHAT_MODEL_CHARS: usize = 128;
 pub const MAX_CHAT_MESSAGE_LIST_LIMIT: usize = 100;
 
@@ -16,6 +17,7 @@ pub const MAX_CHAT_MESSAGE_LIST_LIMIT: usize = 100;
 pub struct NewChatSession {
     pub title: String,
     pub project_id: String,
+    pub web_project_url: Option<String>,
     pub provider_url: String,
     pub model: String,
     pub idempotency_key: String,
@@ -58,6 +60,7 @@ pub struct ChatSessionSummary {
     pub session_id: String,
     pub title: String,
     pub project_id: String,
+    pub web_project_url: Option<String>,
     pub model: String,
     pub state: ChatSessionState,
     pub latest_response_id: Option<String>,
@@ -109,6 +112,7 @@ pub struct ChatSendEnvelope {
     pub operation_id: String,
     pub session_id: String,
     pub project_id: String,
+    pub web_project_url: Option<String>,
     pub provider_url: String,
     pub model: String,
     pub previous_response_id: Option<String>,
@@ -158,6 +162,32 @@ fn validate_body(value: &str) -> Result<String, CommunicationStoreError> {
     Ok(value.to_string())
 }
 
+fn validate_web_project_url(
+    value: Option<String>,
+) -> Result<Option<String>, CommunicationStoreError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = validate_text(&value, MAX_CHAT_WEB_PROJECT_URL_CHARS, "web_project_url")?;
+    let parsed = url::Url::parse(&value)
+        .map_err(|_| invalid("web_project_url must be an absolute URL"))?;
+    let host = parsed.host_str().unwrap_or_default();
+    if parsed.scheme() != "https"
+        || !matches!(host, "chatgpt.com" | "www.chatgpt.com" | "chat.openai.com")
+        || parsed.username() != ""
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || !parsed.path().starts_with("/g/")
+        || !parsed.path().ends_with("/project")
+    {
+        return Err(invalid(
+            "web_project_url must be an https ChatGPT Project URL ending in /project",
+        ));
+    }
+    Ok(Some(value))
+}
+
 fn new_id(prefix: &str) -> String {
     format!("{prefix}{}", Uuid::new_v4().simple())
 }
@@ -172,11 +202,17 @@ fn hash_request(session_id: &str, body: &str) -> String {
     format!("{:x}", hash.finalize())
 }
 
-fn hash_create(title: &str, project_id: &str, provider_url: &str, model: &str) -> String {
+fn hash_create(
+    title: &str,
+    project_id: &str,
+    web_project_url: Option<&str>,
+    provider_url: &str,
+    model: &str,
+) -> String {
     use sha2::{Digest, Sha256};
     let mut hash = Sha256::new();
     hash.update(b"webcodex.chat-session.create.v1\0");
-    for value in [title, project_id, provider_url, model] {
+    for value in [title, project_id, web_project_url.unwrap_or(""), provider_url, model] {
         hash.update(value.as_bytes());
         hash.update([0]);
     }
@@ -200,7 +236,8 @@ impl Database {
                 state TEXT NOT NULL CHECK(state IN ('active', 'waiting', 'unknown', 'closed')),
                 latest_response_id TEXT,
                 created_at_unix_ms INTEGER NOT NULL,
-                updated_at_unix_ms INTEGER NOT NULL
+                updated_at_unix_ms INTEGER NOT NULL,
+                web_project_url TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_wc_chat_sessions_owner_updated
                 ON wc_chat_sessions(owner_principal_digest, updated_at_unix_ms DESC, session_id);
@@ -246,6 +283,16 @@ impl Database {
              WHERE state = 'waiting';
             ",
         )?;
+        let has_web_project_url = conn
+            .prepare("PRAGMA table_info(wc_chat_sessions)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .any(|column| column.as_deref() == Ok("web_project_url"));
+        if !has_web_project_url {
+            conn.execute(
+                "ALTER TABLE wc_chat_sessions ADD COLUMN web_project_url TEXT",
+                [],
+            )?;
+        }
         Ok(())
     }
 
@@ -257,6 +304,7 @@ impl Database {
         validate_principal(principal)?;
         let title = validate_text(&input.title, MAX_CHAT_SESSION_TITLE_CHARS, "title")?;
         let project_id = validate_text(&input.project_id, 512, "project_id")?;
+        let web_project_url = validate_web_project_url(input.web_project_url)?;
         let provider_url = validate_text(
             &input.provider_url,
             MAX_CHAT_PROVIDER_URL_CHARS,
@@ -268,7 +316,13 @@ impl Database {
         let model = validate_text(&input.model, MAX_CHAT_MODEL_CHARS, "model")?;
         let idempotency_key = validate_text(&input.idempotency_key, 128, "idempotency_key")?;
         let create_key = format!("create:{idempotency_key}");
-        let request_hash = hash_create(&title, &project_id, &provider_url, &model);
+        let request_hash = hash_create(
+            &title,
+            &project_id,
+            web_project_url.as_deref(),
+            &provider_url,
+            &model,
+        );
         let now = now_unix_ms();
         let conn = self
             .conn
@@ -277,11 +331,11 @@ impl Database {
         let tx = conn.unchecked_transaction().map_err(store_error)?;
         if let Some(existing) = tx
             .query_row(
-                "SELECT s.session_id, s.title, s.project_id, s.provider_url, s.model, s.state, s.latest_response_id, s.created_at_unix_ms, s.updated_at_unix_ms, o.request_hash FROM wc_chat_sessions s JOIN wc_chat_session_operations o ON o.session_id = s.session_id WHERE s.owner_principal_digest = ?1 AND o.owner_principal_digest = ?1 AND o.idempotency_key = ?2",
+                "SELECT s.session_id, s.title, s.project_id, s.provider_url, s.model, s.state, s.latest_response_id, s.created_at_unix_ms, s.updated_at_unix_ms, s.web_project_url, o.request_hash FROM wc_chat_sessions s JOIN wc_chat_session_operations o ON o.session_id = s.session_id WHERE s.owner_principal_digest = ?1 AND o.owner_principal_digest = ?1 AND o.idempotency_key = ?2",
                 params![principal.digest, create_key],
                 |row| {
                     let summary = row_to_summary(row, 0)?;
-                    let request_hash: String = row.get(9)?;
+                    let request_hash: String = row.get(10)?;
                     Ok((summary, request_hash))
                 },
             )
@@ -295,8 +349,8 @@ impl Database {
         }
         let session_id = new_id(CHAT_SESSION_ID_PREFIX);
         tx.execute(
-            "INSERT INTO wc_chat_sessions(session_id, owner_principal_kind, owner_principal_digest, title, project_id, provider_url, model, state, created_at_unix_ms, updated_at_unix_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'active', ?8, ?8)",
-            params![session_id, principal.kind, principal.digest, title, project_id, provider_url, model, now],
+            "INSERT INTO wc_chat_sessions(session_id, owner_principal_kind, owner_principal_digest, title, project_id, provider_url, model, state, created_at_unix_ms, updated_at_unix_ms, web_project_url) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'active', ?8, ?8, ?9)",
+            params![session_id, principal.kind, principal.digest, title, project_id, provider_url, model, now, web_project_url],
         )
         .map_err(store_error)?;
         tx.execute(
@@ -310,6 +364,7 @@ impl Database {
                 session_id,
                 title,
                 project_id,
+                web_project_url,
                 model,
                 state: ChatSessionState::Active,
                 latest_response_id: None,
@@ -341,7 +396,7 @@ impl Database {
             .map_err(|_| invalid("database lock poisoned"))?;
         let mut summary = conn
             .query_row(
-                "SELECT session_id, title, project_id, provider_url, model, state, latest_response_id, created_at_unix_ms, updated_at_unix_ms FROM wc_chat_sessions WHERE session_id = ?1 AND owner_principal_digest = ?2",
+                "SELECT session_id, title, project_id, provider_url, model, state, latest_response_id, created_at_unix_ms, updated_at_unix_ms, web_project_url FROM wc_chat_sessions WHERE session_id = ?1 AND owner_principal_digest = ?2",
                 params![session_id, principal.digest],
                 |row| row_to_summary(row, 0),
             )
@@ -419,11 +474,11 @@ impl Database {
             tx.commit().map_err(store_error)?;
             return Ok(ChatSendStart::Existing(existing));
         }
-        let (project_id, provider_url, model, previous_response_id, state): (String, String, String, Option<String>, String) = tx
+        let (project_id, provider_url, model, previous_response_id, state, web_project_url): (String, String, String, Option<String>, String, Option<String>) = tx
             .query_row(
-                "SELECT title, project_id, provider_url, model, latest_response_id, state FROM wc_chat_sessions WHERE session_id = ?1 AND owner_principal_digest = ?2",
+                "SELECT title, project_id, provider_url, model, latest_response_id, state, web_project_url FROM wc_chat_sessions WHERE session_id = ?1 AND owner_principal_digest = ?2",
                 params![session_id, principal.digest],
-                |row| Ok((row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+                |row| Ok((row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
             )
             .map_err(|error| match error { rusqlite::Error::QueryReturnedNoRows => CommunicationStoreError::new("chat_session_not_found", "Chat session not found"), other => store_error(other) })?;
         if state == "closed" {
@@ -450,6 +505,7 @@ impl Database {
             operation_id,
             session_id: session_id.to_string(),
             project_id,
+            web_project_url,
             provider_url,
             model,
             previous_response_id,
@@ -561,6 +617,7 @@ fn row_to_summary(row: &rusqlite::Row<'_>, offset: usize) -> rusqlite::Result<Ch
         session_id: row.get(offset)?,
         title: row.get(offset + 1)?,
         project_id: row.get(offset + 2)?,
+        web_project_url: row.get(offset + 9)?,
         model: row.get(offset + 4)?,
         state: ChatSessionState::from_db(&row.get::<_, String>(offset + 5)?).map_err(|error| {
             rusqlite::Error::FromSqlConversionFailure(
@@ -608,6 +665,7 @@ mod tests {
                 NewChatSession {
                     title: "test".into(),
                     project_id: "runner/project".into(),
+                    web_project_url: None,
                     provider_url: "http://127.0.0.1:17841".into(),
                     model: "chatgpt-web/medium".into(),
                     idempotency_key: "create-1".into(),
@@ -620,6 +678,7 @@ mod tests {
                 NewChatSession {
                     title: "test".into(),
                     project_id: "runner/project".into(),
+                    web_project_url: None,
                     provider_url: "http://127.0.0.1:17841".into(),
                     model: "chatgpt-web/medium".into(),
                     idempotency_key: "create-1".into(),
@@ -654,5 +713,66 @@ mod tests {
             db.begin_chat_send(&principal, &session_id, "retry", "send-2"),
             Err(error) if error.code() == "chat_session_busy"
         ));
+    }
+
+    #[test]
+    fn chat_session_preserves_web_project_binding_for_provider_navigation() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("state.sqlite")).unwrap();
+        let principal = CommunicationPrincipal {
+            kind: "test".into(),
+            digest: "wc_principal_web_project".into(),
+        };
+        let web_project_url = "https://chatgpt.com/g/g-p-demo-project/project".to_string();
+        let created = db
+            .create_chat_session(
+                &principal,
+                NewChatSession {
+                    title: "project chat".into(),
+                    project_id: "runner/project".into(),
+                    web_project_url: Some(web_project_url.clone()),
+                    provider_url: "http://127.0.0.1:17841".into(),
+                    model: "chatgpt-web/medium".into(),
+                    idempotency_key: "create-web-project-1".into(),
+                },
+            )
+            .unwrap();
+        assert_eq!(created.session.web_project_url.as_deref(), Some(web_project_url.as_str()));
+
+        let envelope = match db
+            .begin_chat_send(
+                &principal,
+                &created.session.session_id,
+                "hello project",
+                "send-web-project-1",
+            )
+            .unwrap()
+        {
+            ChatSendStart::Started(value) => value,
+            ChatSendStart::Existing(_) => panic!("first send must start"),
+        };
+        assert_eq!(envelope.web_project_url.as_deref(), Some(web_project_url.as_str()));
+    }
+
+    #[test]
+    fn chat_session_rejects_non_chatgpt_web_project_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("state.sqlite")).unwrap();
+        let principal = CommunicationPrincipal {
+            kind: "test".into(),
+            digest: "wc_principal_invalid_web_project".into(),
+        };
+        let result = db.create_chat_session(
+            &principal,
+            NewChatSession {
+                title: "invalid project chat".into(),
+                project_id: "runner/project".into(),
+                web_project_url: Some("https://example.com/project".into()),
+                provider_url: "http://127.0.0.1:17841".into(),
+                model: "chatgpt-web/medium".into(),
+                idempotency_key: "create-invalid-web-project-1".into(),
+            },
+        );
+        assert!(matches!(result, Err(error) if error.code() == "invalid_chat_session"));
     }
 }

@@ -1,0 +1,377 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "网页端 ChatGPT Project 创建流程",
+    "locale": "zh-CN",
+    "output": "chat-project.workflow.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "native-chat",
+        "label": "创建原生 Chat",
+        "focus": [
+          "intent",
+          "create",
+          "validate",
+          "persist",
+          "send",
+          "navigate",
+          "native_chat"
+        ],
+        "note": "从本地会话创建到 Project 内原生 Chat 的首次发送路径。"
+      },
+      {
+        "id": "local-tools",
+        "label": "调用本地工具",
+        "focus": [
+          "send",
+          "mcp",
+          "runner",
+          "tool_result"
+        ],
+        "note": "ChatGPT 与 WebCodex 本地 MCP 工具的闭环。"
+      },
+      {
+        "id": "fail-closed",
+        "label": "绑定校验与失败",
+        "focus": [
+          "validate",
+          "invalid",
+          "unknown",
+          "reconcile"
+        ],
+        "note": "无效 Project URL 和不确定 Provider 结果都保留为可审计状态。"
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "flow",
+      "label": "Chat bridge flow"
+    }
+  ],
+  "phases": [
+    {
+      "id": "bind",
+      "label": "绑定",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "create",
+      "label": "创建",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "execute",
+      "label": "发送与工具",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "groups": [
+    {
+      "id": "durable",
+      "label": "持久化会话边界",
+      "lane": "flow",
+      "fromCol": 1,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "web",
+      "label": "网页端 Chat 创建",
+      "lane": "flow",
+      "fromCol": 3,
+      "toCol": 5,
+      "variant": "security"
+    },
+    {
+      "id": "tools",
+      "label": "本地工具闭环",
+      "lane": "flow",
+      "fromCol": 3,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "intent",
+    "create",
+    "validate",
+    "persist",
+    "send",
+    "navigate",
+    "native_chat"
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "intent",
+      "reconcile"
+    ],
+    "allowedTerminals": [
+      "invalid",
+      "unknown",
+      "reconcile",
+      "native_chat",
+      "tool_result"
+    ],
+    "requiredEdges": [
+      {
+        "from": "create",
+        "to": "validate"
+      },
+      {
+        "from": "validate",
+        "to": "persist"
+      },
+      {
+        "from": "persist",
+        "to": "send"
+      },
+      {
+        "from": "send",
+        "to": "navigate"
+      },
+      {
+        "from": "navigate",
+        "to": "native_chat"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "intent",
+      "lane": "flow",
+      "col": 0,
+      "type": "external",
+      "label": "提出 Chat 请求",
+      "width": 150
+    },
+    {
+      "id": "create",
+      "lane": "flow",
+      "col": 1,
+      "type": "frontend",
+      "label": "POST /api/chat/session",
+      "width": 154
+    },
+    {
+      "id": "validate",
+      "lane": "flow",
+      "col": 2,
+      "type": "security",
+      "label": "校验双重绑定",
+      "tag": "fail closed",
+      "width": 154
+    },
+    {
+      "id": "persist",
+      "lane": "flow",
+      "col": 3,
+      "type": "database",
+      "label": "写入 Chat session",
+      "width": 154
+    },
+    {
+      "id": "send",
+      "lane": "flow",
+      "col": 4,
+      "type": "backend",
+      "label": "POST action=send",
+      "width": 154
+    },
+    {
+      "id": "navigate",
+      "lane": "flow",
+      "col": 4,
+      "type": "cloud",
+      "label": "打开 Project 首页",
+      "width": 154,
+      "yOffset": -70
+    },
+    {
+      "id": "native_chat",
+      "lane": "flow",
+      "col": 5,
+      "type": "external",
+      "label": "创建原生 Chat",
+      "tag": "属于该网页 Project",
+      "width": 154,
+      "yOffset": -70
+    },
+    {
+      "id": "mcp",
+      "lane": "flow",
+      "col": 3,
+      "type": "messagebus",
+      "label": "调用 POST /mcp",
+      "width": 154,
+      "yOffset": 70
+    },
+    {
+      "id": "runner",
+      "lane": "flow",
+      "col": 4,
+      "type": "backend",
+      "label": "Runner 执行",
+      "width": 154,
+      "yOffset": 70
+    },
+    {
+      "id": "tool_result",
+      "lane": "flow",
+      "col": 5,
+      "type": "database",
+      "label": "返回工具结果",
+      "width": 154,
+      "yOffset": 140
+    },
+    {
+      "id": "invalid",
+      "lane": "flow",
+      "col": 3,
+      "type": "security",
+      "label": "拒绝无效绑定",
+      "width": 154,
+      "yOffset": 180
+    },
+    {
+      "id": "unknown",
+      "lane": "flow",
+      "col": 5,
+      "type": "security",
+      "label": "unknown",
+      "width": 154,
+      "yOffset": 220
+    },
+    {
+      "id": "reconcile",
+      "lane": "flow",
+      "col": 4,
+      "type": "backend",
+      "label": "人工 / Provider 对账",
+      "width": 154,
+      "yOffset": 180
+    }
+  ],
+  "edges": [
+    {
+      "id": "intent-create",
+      "from": "intent",
+      "to": "create",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "create-validate",
+      "from": "create",
+      "to": "validate",
+      "label": "解析请求",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "validate-persist",
+      "from": "validate",
+      "to": "persist",
+      "label": "通过",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "validate-invalid",
+      "from": "validate",
+      "to": "invalid",
+      "label": "失败",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "persist-send",
+      "from": "persist",
+      "to": "send",
+      "label": "session_id",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "send-navigate",
+      "from": "send",
+      "to": "navigate",
+      "label": "Responses turn",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "navigate-native",
+      "from": "navigate",
+      "to": "native_chat",
+      "label": "首次发送",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "send-mcp",
+      "from": "send",
+      "to": "mcp",
+      "label": "本地工具路径",
+      "variant": "dashed",
+      "role": "async"
+    },
+    {
+      "id": "mcp-runner",
+      "from": "mcp",
+      "to": "runner",
+      "label": "task_start / tool",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "runner-result",
+      "from": "runner",
+      "to": "tool_result",
+      "label": "完成证据",
+      "variant": "default",
+      "role": "return"
+    },
+    {
+      "id": "send-unknown",
+      "from": "send",
+      "to": "unknown",
+      "label": "超时 / 空响应",
+      "variant": "security",
+      "role": "error"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "网页端 Project 归属",
+      "items": [
+        "提供 /project 首页时，首次发送在该 Project 内创建 /c/... Chat",
+        "只提供本地 project 时，Provider 从根页面创建普通 Chat"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "本地工具路径",
+      "items": [
+        "ChatGPT Work 通过 /mcp 调用 WebCodex task_start 与文件/Git 工具",
+        "Runner Project 是本地权限边界，与网页 Project 独立"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "失败状态",
+      "items": [
+        "URL 校验失败直接拒绝",
+        "超时或空响应保留 unknown，确认前不盲目重试"
+      ]
+    }
+  ]
+}

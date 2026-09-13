@@ -318,7 +318,7 @@ fn schemas() -> Value {
                 {
                     "type": "object", "additionalProperties": false, "required": ["action", "title", "project", "idempotency_key"],
                     "properties": {
-                        "action": {"const": "create"}, "title": {"type": "string", "maxLength": 200}, "project": {"type": "string", "maxLength": 512}, "model": {"type": "string", "maxLength": 128}, "idempotency_key": {"type": "string", "maxLength": 128}
+                        "action": {"const": "create"}, "title": {"type": "string", "maxLength": 200}, "project": {"type": "string", "maxLength": 512}, "web_project_url": {"type": "string", "maxLength": 512, "description": "Optional exact ChatGPT Project URL ending in /project. The first send creates the native ChatGPT chat inside that Project."}, "model": {"type": "string", "maxLength": 128}, "idempotency_key": {"type": "string", "maxLength": 128}
                     }
                 },
                 {

@@ -30,6 +30,8 @@ enum ChatSessionRequest {
         title: String,
         project: String,
         #[serde(default)]
+        web_project_url: Option<String>,
+        #[serde(default)]
         model: Option<String>,
         idempotency_key: String,
     },
@@ -106,6 +108,7 @@ async fn chat_session(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         ChatSessionRequest::Create {
             title,
             project,
+            web_project_url,
             model,
             idempotency_key,
         } => {
@@ -124,6 +127,7 @@ async fn chat_session(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 NewChatSession {
                     title,
                     project_id: project,
+                    web_project_url,
                     provider_url,
                     model,
                     idempotency_key,
@@ -251,7 +255,7 @@ async fn run_provider(
         "model": envelope.model,
         "input": [{"role": "user", "content": [{"type": "input_text", "text": envelope.user_body}]}],
         "stream": false,
-        "metadata": {"webcodex_session_id": envelope.session_id, "webcodex_project_id": envelope.project_id},
+        "metadata": {"webcodex_session_id": envelope.session_id, "webcodex_project_id": envelope.project_id, "web_project_url": envelope.web_project_url},
     });
     if let Some(previous_response_id) = envelope.previous_response_id {
         payload["previous_response_id"] = Value::String(previous_response_id);

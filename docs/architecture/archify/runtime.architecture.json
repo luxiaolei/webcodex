@@ -1,0 +1,368 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "WebCodex Unified Chat Runtime",
+    "locale": "zh-CN",
+    "output": "runtime.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/yyjeqhc/webcodex",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "e4d38d91706c59e1fcee7c6526f0f56fd70f8455"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方 / Agent",
+      "sublabel": "API 或 MCP",
+      "pos": [
+        40,
+        283
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "chat_api",
+      "type": "backend",
+      "label": "Chat Session API",
+      "sublabel": "POST /api/chat/session",
+      "pos": [
+        260,
+        280
+      ],
+      "size": [
+        190,
+        70
+      ],
+      "tag": "create · send · read",
+      "sources": [
+        {
+          "path": "src/chat_http.rs",
+          "line": 26,
+          "end_line": 183,
+          "label": "chat session route"
+        }
+      ]
+    },
+    {
+      "id": "local_mcp",
+      "type": "backend",
+      "label": "WebCodex MCP",
+      "sublabel": "POST /mcp",
+      "pos": [
+        260,
+        540
+      ],
+      "size": [
+        190,
+        70
+      ],
+      "tag": "task · files · git",
+      "sources": [
+        {
+          "path": "src/mcp.rs",
+          "line": 1,
+          "label": "MCP route"
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "通信 SQLite",
+      "sublabel": "会话、操作、消息",
+      "pos": [
+        260,
+        90
+      ],
+      "size": [
+        190,
+        70
+      ],
+      "tag": "source of truth",
+      "sources": [
+        {
+          "path": "crates/webcodex-store/src/chat_session.rs",
+          "line": 1,
+          "end_line": 40,
+          "label": "durable chat store"
+        }
+      ]
+    },
+    {
+      "id": "runner",
+      "type": "backend",
+      "label": "Runner + Project",
+      "sublabel": "本地项目边界",
+      "pos": [
+        560,
+        540
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "src/tool_runtime/project_resolution.rs",
+          "line": 1,
+          "label": "Runner runtime"
+        }
+      ]
+    },
+    {
+      "id": "provider",
+      "type": "backend",
+      "label": "Ego Browser Provider",
+      "sublabel": "scripts/ego-chatgpt-web-provider.mjs",
+      "pos": [
+        560,
+        280
+      ],
+      "size": [
+        220,
+        70
+      ],
+      "tag": "shared runtime",
+      "sources": [
+        {
+          "path": "scripts/ego-chatgpt-web-provider.mjs",
+          "line": 81,
+          "end_line": 141,
+          "label": "Ego provider"
+        }
+      ]
+    },
+    {
+      "id": "local_tools",
+      "type": "backend",
+      "label": "本地工具 / Job",
+      "sublabel": "命令、文件、Git",
+      "pos": [
+        850,
+        540
+      ],
+      "size": [
+        180,
+        70
+      ]
+    },
+    {
+      "id": "taskspace",
+      "type": "external",
+      "label": "Ego TaskSpace",
+      "sublabel": "已登录账号",
+      "pos": [
+        850,
+        280
+      ],
+      "size": [
+        180,
+        70
+      ]
+    },
+    {
+      "id": "web_project",
+      "type": "external",
+      "label": "ChatGPT Project / Chat",
+      "sublabel": "首次发送时创建 /c/...",
+      "pos": [
+        850,
+        410
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "tag": "可选 web_project_url"
+    },
+    {
+      "id": "fallback",
+      "type": "backend",
+      "label": "Vendored adapter",
+      "sublabel": "vendor/codex-chatgpt-web",
+      "pos": [
+        850,
+        90
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "tag": "显式 fallback"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "本地机器 / WebCodex",
+      "wraps": [
+        "chat_api",
+        "local_mcp",
+        "store",
+        "runner",
+        "provider",
+        "local_tools",
+        "fallback"
+      ],
+      "pad": 28
+    },
+    {
+      "kind": "region",
+      "label": "ChatGPT 账号 / 网页端",
+      "wraps": [
+        "taskspace",
+        "web_project"
+      ],
+      "pad": 28
+    }
+  ],
+  "connections": [
+    {
+      "id": "caller-chat",
+      "from": "caller",
+      "to": "chat_api",
+      "label": "创建 / 发送",
+      "variant": "emphasis",
+      "route": "orthogonal-h"
+    },
+    {
+      "id": "caller-mcp",
+      "from": "caller",
+      "to": "local_mcp",
+      "label": "工具调用",
+      "variant": "dashed",
+      "route": "orthogonal-v",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": -34
+    },
+    {
+      "id": "chat-store",
+      "from": "chat_api",
+      "to": "store",
+      "label": "持久化绑定与状态",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "route": "orthogonal-v",
+      "labelDy": 0,
+      "labelDx": -95
+    },
+    {
+      "id": "mcp-runner",
+      "from": "local_mcp",
+      "to": "runner",
+      "label": "校验 Project / 启动任务",
+      "variant": "emphasis",
+      "route": "orthogonal-h",
+      "labelDy": 60
+    },
+    {
+      "id": "chat-provider",
+      "from": "chat_api",
+      "to": "provider",
+      "label": "Responses turn",
+      "variant": "emphasis",
+      "route": "orthogonal-h"
+    },
+    {
+      "id": "provider-taskspace",
+      "from": "provider",
+      "to": "taskspace",
+      "label": "复用登录 TaskSpace",
+      "variant": "emphasis",
+      "route": "orthogonal-h",
+      "labelDy": 65
+    },
+    {
+      "id": "taskspace-project",
+      "from": "taskspace",
+      "to": "web_project",
+      "label": "首次发送创建原生 Chat",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight",
+      "labelDy": 45
+    },
+    {
+      "id": "runner-tools",
+      "from": "runner",
+      "to": "local_tools",
+      "label": "执行本地资源",
+      "route": "orthogonal-h"
+    },
+    {
+      "id": "fallback-provider",
+      "from": "fallback",
+      "to": "provider",
+      "label": "仅显式切换",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v",
+      "labelDx": -45
+    },
+    {
+      "id": "store-provider",
+      "from": "store",
+      "to": "provider",
+      "label": "恢复 session 元数据",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          470,
+          125
+        ],
+        [
+          670,
+          125
+        ],
+        [
+          670,
+          280
+        ]
+      ],
+      "labelAt": [
+        565,
+        115
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "两个 Project 绑定",
+      "items": [
+        "project 是本地 WebCodex Runner Project",
+        "web_project_url 是可选的原生 ChatGPT Project 首页；两者语义分开"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "一次配置，多项目复用",
+      "items": [
+        "Ego Browser 账号与 TaskSpace 是运行时级配置",
+        "每个会话只选择自己的 Project URL，无需重复登录"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "闭环边界",
+      "items": [
+        "Chat API 负责网页端 Chat，会话创建于 Project 首页",
+        "MCP 负责 ChatGPT 到本地工具；不自动接管既有对话"
+      ]
+    }
+  ]
+}
