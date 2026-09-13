@@ -16,6 +16,7 @@ test("directive requires an explicit configured target", () => {
     sessionId: "wc_chat_target",
   });
   assert.equal(directive("没有路由标记", { QC02: "wc_chat_target" }), null);
+  assert.equal(directive("说明需要使用 [to:QC02] 标记，但本条没有实际路由。", { QC02: "wc_chat_target" }), null);
   assert.throws(() => directive("[to:missing]", { QC02: "wc_chat_target" }), /unknown relay target/);
 });
 
