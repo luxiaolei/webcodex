@@ -35,7 +35,7 @@ fn apply_text_edits_metadata_mcp_openapi_consistency() {
         .expect("edit category present");
     assert!(edit.iter().any(|v| v == "apply_text_edits"));
     // OpenAPI ToolCallRequest description lists the name; operation count
-    // stays within the GPT Actions budget because no dedicated operation is added.
+    // stays within the GPT Actions budget alongside the dedicated chat session operation.
     let spec = crate::openapi::build_openapi_spec();
     let tool_desc = &spec["components"]["schemas"]["ToolCallRequest"]["properties"]["tool"]
         ["description"]
@@ -51,5 +51,5 @@ fn apply_text_edits_metadata_mcp_openapi_consistency() {
         .values()
         .map(|m| m.as_object().unwrap().len())
         .sum();
-    assert_eq!(count, 16, "OpenAPI operation count must remain 16");
+    assert_eq!(count, 17, "OpenAPI operation count must remain 17");
 }

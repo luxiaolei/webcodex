@@ -3544,7 +3544,7 @@ fn session_handoff_summary_metadata_mcp_openapi_consistency() {
         .values()
         .map(|m| m.as_object().unwrap().len())
         .sum();
-    assert_eq!(count, 16, "OpenAPI operation count must remain 16");
+    assert_eq!(count, 17, "OpenAPI operation count must remain 17");
 }
 
 // =========================================================================

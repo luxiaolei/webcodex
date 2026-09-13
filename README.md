@@ -33,6 +33,10 @@ npx --yes @yyjeqhc/webcodex share
 - **Handle long-running work** — keep jobs observable instead of requiring one model turn to stay open indefinitely.
 - **Support human review** — use the [Runtime Console](docs/runtime-console.md) and task workflow to guide, cancel, accept, or reject work where those actions are available.
 
+### Chat session bridge
+
+Use the authenticated `POST /api/chat/session` action when a ChatGPT Web turn needs a durable binding to a local Runner Project. `create` selects an exact caller-visible Project, `send` starts an asynchronous turn through the local `codex-chatgpt-web` adapter, and `operation` or `read` retrieves its state and retained messages. `pending`, `completed`, `failed`, and `unknown` remain separate states; ambiguous provider or network outcomes stay `unknown` and are never blindly retried. Configure `WEBCODEX_CHATGPT_WEB_URL`, `WEBCODEX_CHATGPT_WEB_MODEL`, and the optional `WEBCODEX_CHATGPT_WEB_TOKEN`. The Project is a local WebCodex binding; native ChatGPT Project membership and automatic background wake depend on the adapter and host. See [Chat session bridge](docs/chat-session.md).
+
 ## Why WebCodex?
 
 - **Your code stays on your machine.** The repository does not need to be copied into the chat service.
@@ -84,6 +88,7 @@ Those are follow-up operating concerns, not concepts a first-time user should ha
 - [Using Desktop](docs/desktop-guide.md) — projects, connections, activity, and background operation
 - [Full Setup](docs/PERSONAL_SETUP.md) — CLI, existing Server, Linux, and advanced regular Server + Runner setup
 - [Quick Trial](docs/QUICK_START.md) — temporarily try one repository with `share`
+- [Chat session bridge](docs/chat-session.md) — durable ChatGPT Web sessions, local Project binding, and asynchronous operation polling
 - [MCP](docs/MCP.md) — ChatGPT, Claude, authentication choices, and MCP reference
 - [Deployment](docs/DEPLOYMENT.md) — production, self-hosting, and advanced operations
 - [Troubleshooting](docs/TROUBLESHOOTING.md) — connection and runtime problems

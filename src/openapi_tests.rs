@@ -778,6 +778,14 @@ fn openapi_external_action_contract_matches_compatibility_golden() {
             "ToolResult",
         ),
         (
+            "/api/chat/session",
+            "post",
+            "chatSession",
+            true,
+            "ChatSessionRequest",
+            "ChatSessionResponse",
+        ),
+        (
             "/api/tools/call",
             "post",
             "callRuntimeTool",

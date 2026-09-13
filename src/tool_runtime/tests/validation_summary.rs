@@ -147,7 +147,7 @@ fn validation_summary_registration_schema_metadata_and_openapi_are_synchronized(
         .values()
         .map(|methods| methods.as_object().unwrap().len())
         .sum();
-    assert_eq!(operation_count, 16);
+    assert_eq!(operation_count, 17);
 }
 
 #[tokio::test]

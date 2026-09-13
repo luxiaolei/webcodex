@@ -210,13 +210,15 @@ fn goal_schemas_are_bounded_private_and_existing_coding_tools_do_not_accept_goal
 
     let detail = &spec("get_goal").output_schema["properties"]["output"]["properties"]["goal"];
     let correlation = &detail["properties"]["correlations"]["items"];
+    let mut correlation_fields = correlation["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    correlation_fields.sort_unstable();
     assert_eq!(
-        correlation["properties"]
-            .as_object()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>(),
+        correlation_fields,
         vec![
             "created_at_unix_ms".to_string(),
             "kind".to_string(),

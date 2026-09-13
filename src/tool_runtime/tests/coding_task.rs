@@ -290,7 +290,7 @@ fn coding_task_tools_are_registered_in_metadata_and_openapi() {
         .map(|methods| methods.as_object().unwrap().len())
         .sum();
     assert_eq!(
-        operation_count, 16,
+        operation_count, 17,
         "retired dedicated OpenAPI operations stay absent"
     );
 }

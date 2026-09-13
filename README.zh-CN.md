@@ -33,6 +33,10 @@ npx --yes @yyjeqhc/webcodex share
 - **处理长时间任务** —— 任务可以持续运行并保持可观察，不需要一次模型回复一直等待到底。
 - **保留人工审查** —— 可以通过运行时控制台和任务流程进行指导、取消、接受或拒绝。
 
+### Chat 会话桥接
+
+如果 ChatGPT Web 回合需要稳定绑定到本地 Runner Project，可以使用受认证的 `POST /api/chat/session` 接口。`create` 绑定调用方可见的精确 Project，`send` 通过本地 `codex-chatgpt-web` 适配器异步启动回合，`operation` 或 `read` 查询状态并读取持久消息。`pending`、`completed`、`failed`、`unknown` 分开记录；Provider 或网络结果不明确时保留 `unknown`，不会盲目重试。可配置 `WEBCODEX_CHATGPT_WEB_URL`、`WEBCODEX_CHATGPT_WEB_MODEL` 和可选的 `WEBCODEX_CHATGPT_WEB_TOKEN`。这里的 Project 是 WebCodex 本地绑定，不等同于原生 ChatGPT Project 归属；后台自动唤醒取决于适配器和宿主。详见[Chat 会话桥接](docs/chat-session.md)。
+
 ## 为什么用 WebCodex？
 
 - **代码留在自己的机器上。** 不需要把整个仓库上传到聊天服务。
@@ -84,6 +88,7 @@ Windows 接入和长期部署见[部署指南](docs/DEPLOYMENT.zh-CN.md)与 [MCP
 - [Desktop 日常使用](docs/desktop-guide.zh-CN.md) —— 项目、连接、活动与后台运行
 - [完整使用指南](docs/PERSONAL_SETUP.zh-CN.md) —— CLI、已有 Server、Linux 与高级普通 Server + Runner 配置
 - [快速试用](docs/QUICK_START.zh-CN.md) —— 用 `share` 临时体验一个仓库
+- [Chat 会话桥接](docs/chat-session.md) —— ChatGPT Web 会话、本地 Project 绑定与异步结果查询
 - [MCP](docs/MCP.zh-CN.md) —— ChatGPT、Claude、认证方式和 MCP 参考
 - [部署指南](docs/DEPLOYMENT.zh-CN.md) —— 生产、自托管和高级运维
 - [故障排查](docs/TROUBLESHOOTING.zh-CN.md) —— 连接和运行问题
