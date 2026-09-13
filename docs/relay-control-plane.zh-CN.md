@@ -101,4 +101,4 @@ node --check scripts/webcodex-relay-init.mjs
 
 - **网页 Chat relay：通过。** 在隔离的 WebCodex Server、Ego Browser Provider 和 QuantCompany Project 上，结构化 `web_chat` 路由被程序化解析，发送到指定目标 Chat；目标返回后，relay 将 `[from:ALIAS]` 回传总控。`operation` 完成、总控 `read` 可见完整消息链，发送间隔按 30 秒测试配置执行，未出现新的 429。
 - **Chat/MCP → 本地 Runner → Codex CLI：通过。** `task_start`、`files_list`、`commands/run` 成功在隔离 Project 中启动本地 `codex exec` 只读任务，进程以退出码 0 完成。该仓库没有可识别的 validation recipe，因此没有伪造 `task_finish` 成功；任务已清理取消，且没有修改工作树。
-- **统一 `local_runner` relay：通过。** 结构化路由会校验 profile Project，创建 Runner task，提交 `codex exec`，轮询 `task_review`，并把 Worker stdout 或明确失败状态回传总控；跨 Project 路由会 fail-closed。
+- **统一 `local_runner` relay：实现与隔离测试通过。** 结构化路由会校验 profile Project，创建 Runner task，提交 `codex exec`，轮询 `task_review`，并把 Worker stdout 或明确失败状态回传总控；跨 Project 路由会 fail-closed。当前记录的是 Runner/Connector 隔离测试；要在真实账号上验收，仍需按上面的清单运行一次 live profile。
