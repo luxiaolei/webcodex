@@ -18,6 +18,7 @@ const maxWaitMs = 180_000;
 const defaultPollMs = 5_000;
 const defaultMinSendIntervalMs = 15_000;
 const defaultRateLimitBackoffMs = 30_000;
+const defaultLocalRunnerWaitMs = 3_600_000;
 const maxRateLimitBackoffMs = 300_000;
 
 function boundedNumber(value, fallback, minimum, maximum) {
@@ -63,12 +64,17 @@ function loadConfig(path) {
     provider_url: String(config.provider_url || process.env.WEBCODEX_CHATGPT_WEB_URL || defaultProvider).replace(/\/$/, ""),
     token: process.env.WEBCODEX_TOKEN || "",
     profile: config.profile,
+    project: typeof config.project === "string" && config.project.trim() ? config.project.trim() : undefined,
     controller_session: config.controller_session,
     targets: config.targets,
     aliases,
     poll_ms: boundedNumber(config.poll_ms ?? defaultPollMs, defaultPollMs, 1_000, 60_000),
     min_send_interval_ms: boundedNumber(config.min_send_interval_ms ?? defaultMinSendIntervalMs, defaultMinSendIntervalMs, 0, 300_000),
     rate_limit_backoff_ms: boundedNumber(config.rate_limit_backoff_ms ?? defaultRateLimitBackoffMs, defaultRateLimitBackoffMs, 1_000, maxRateLimitBackoffMs),
+    local_runner_mode: config.local_runner_mode === "read_only" ? "read_only" : "normal",
+    local_runner_sandbox: config.local_runner_sandbox === "read-only" ? "read-only" : "workspace-write",
+    local_runner_timeout_secs: boundedNumber(config.local_runner_timeout_secs ?? 120, 120, 1, 120),
+    local_runner_max_wait_ms: boundedNumber(config.local_runner_max_wait_ms ?? defaultLocalRunnerWaitMs, defaultLocalRunnerWaitMs, 5_000, 7_200_000),
     route_repair_command: typeof config.route_repair_command === "string" && config.route_repair_command.trim()
       ? config.route_repair_command.trim()
       : undefined,
@@ -131,7 +137,7 @@ function looksStructured(text) {
 
 async function routeFromBody(body, config) {
   const explicit = directive(body, config.targets, config.aliases);
-  if (explicit) return { ...explicit, body, route_source: "explicit_directive" };
+  if (explicit) return { ...explicit, kind: "web_chat", body, route_source: "explicit_directive" };
   if (!looksStructured(body)) return null;
   const options = {
     cwd: config.route_repair_cwd || process.cwd(),
@@ -140,13 +146,24 @@ async function routeFromBody(body, config) {
   };
   if (typeof config.route_repair_runner === "function") options.runFallback = config.route_repair_runner;
   const parsed = await parseRouteWithFallback(body, options);
-  if (parsed.route.destination.kind !== "web_chat") {
-    throw new Error("local_runner route requires the WebCodex route_dispatch worker");
+  if (parsed.route.destination.kind === "local_runner") {
+    if (!config.project) throw new Error("local_runner route requires relay config project");
+    if (parsed.route.destination.project !== config.project) {
+      throw new Error(`local_runner route project '${parsed.route.destination.project}' is not bound to this relay profile`);
+    }
+    return {
+      kind: "local_runner",
+      project: parsed.route.destination.project,
+      body: parsed.route.prompt,
+      acceptance: parsed.route.acceptance,
+      mode: parsed.route.mode,
+      route_source: parsed.source,
+    };
   }
   const alias = parsed.route.destination.alias;
   const sessionId = config.targets[alias];
   if (!sessionId) throw new Error(`unknown relay target '${alias}'`);
-  return { alias, sessionId, body: parsed.route.prompt, route_source: parsed.source };
+  return { kind: "web_chat", alias, sessionId, body: parsed.route.prompt, route_source: parsed.source };
 }
 
 async function requestJson(url, options = {}) {
@@ -225,6 +242,109 @@ async function sendSession(config, state, path, sessionId, body, idempotencyKey)
   throw new Error("Chat operation wait exceeded 180 seconds; outcome is unknown");
 }
 
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
+function localRunnerCommand(config, prompt) {
+  const sandbox = config.local_runner_sandbox || "workspace-write";
+  return [
+    "codex exec --ephemeral --skip-git-repo-check",
+    `--sandbox ${sandbox}`,
+    "--model gpt-6-astra",
+    "-c model_reasoning_effort=medium",
+    "--json --cd .",
+    shellQuote(prompt),
+  ].join(" ");
+}
+
+function localRunnerGoal(routed) {
+  const acceptance = Array.isArray(routed.acceptance) && routed.acceptance.length
+    ? `\n\nAcceptance criteria:\n${routed.acceptance.map((item) => `- ${item}`).join("\n")}`
+    : "";
+  return `${routed.body}${acceptance}`;
+}
+
+function localRunnerOutput(execution) {
+  const stdout = String(execution?.output_tail?.stdout || "");
+  const messages = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const value = JSON.parse(line);
+      if (typeof value.output_text === "string") messages.push(value.output_text);
+      if (typeof value.item?.text === "string" && /message/i.test(String(value.item?.type || ""))) messages.push(value.item.text);
+      if (typeof value.text === "string" && /message/i.test(String(value.type || ""))) messages.push(value.text);
+    } catch { /* raw command output is still a valid receipt */ }
+  }
+  return (messages.at(-1) || stdout).trim();
+}
+
+function connectorError(body, action) {
+  if (body?.ok !== false) return null;
+  return new Error(`${action} failed: ${body?.error?.code || "connector_error"}: ${body?.error?.message || "no detail"}`);
+}
+
+async function runLocalRunner(config, state, path, routed, event, key, attempt) {
+  const goal = localRunnerGoal(routed);
+  let taskId = event.local_task_id;
+  if (!taskId) {
+    const started = await requestJson(`${config.api_url}/api/connector/task/start`, {
+      method: "POST",
+      headers: headers(config),
+      body: JSON.stringify({ goal, mode: config.local_runner_mode || "normal" }),
+    });
+    const startError = connectorError(started, "task_start");
+    if (startError) throw startError;
+    taskId = started.task_id;
+    if (typeof taskId !== "string" || !/^wc_task_[A-Za-z0-9]+$/.test(taskId)) {
+      throw new Error("task_start did not return a valid task_id");
+    }
+    event.local_task_id = taskId;
+    event.local_run_id = started.run_id || null;
+    saveState(path, state);
+  }
+  const operationId = event.local_operation_id || `${config.profile}:${key}:local:${attempt}`;
+  if (!event.local_operation_id) {
+    event.local_operation_id = operationId;
+    saveState(path, state);
+  }
+  const command = localRunnerCommand(config, goal);
+  const submitted = await requestJson(`${config.api_url}/api/connector/commands/run`, {
+    method: "POST",
+    headers: headers(config),
+    body: JSON.stringify({
+      task_id: taskId,
+      operation_id: operationId,
+      command,
+      timeout_secs: config.local_runner_timeout_secs || 120,
+    }),
+  });
+  const submitError = connectorError(submitted, "commands_run");
+  if (submitError) throw submitError;
+  let current = submitted;
+  const maxWaitMs = config.local_runner_max_wait_ms || defaultLocalRunnerWaitMs;
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const execution = current?.data?.execution;
+    const status = execution?.execution_status;
+    if (status === "succeeded") return localRunnerOutput(execution) || `local task ${taskId} completed`;
+    if (["failed", "cancelled", "interrupted", "unknown"].includes(status)) {
+      const detail = execution?.output_tail?.stderr || execution?.terminal_reason || status;
+      throw new Error(`local runner execution ${status}: ${detail}`);
+    }
+    await sleep(Math.min(15_000, Math.max(1_000, config.poll_ms)));
+    current = await requestJson(`${config.api_url}/api/connector/task/review`, {
+      method: "POST",
+      headers: headers(config),
+      body: JSON.stringify({ task_id: taskId, wait_ms: Math.min(15_000, Math.max(1_000, config.poll_ms)), max_events: 50, include_output_tail: true }),
+    });
+    const reviewError = connectorError(current, "task_review");
+    if (reviewError) throw reviewError;
+  }
+  throw new Error(`local runner task ${taskId} exceeded ${maxWaitMs}ms; outcome is unknown`);
+}
+
 function thinkingFailed(text) {
   return /thinking failed|思考失败/i.test(text || "");
 }
@@ -256,8 +376,10 @@ async function processMessage(config, state, message, path) {
     state: "forwarding",
     source_message_id: key,
     source_body: message.text,
-    target_alias: routed.alias,
-    target_session_id: routed.sessionId,
+    target_kind: routed.kind,
+    target_alias: routed.alias || "LOCAL_RUNNER",
+    target_session_id: routed.sessionId || null,
+    target_project: routed.project || null,
     route_source: routed.route_source,
     attempts: 0,
     updated_at: new Date().toISOString(),
@@ -269,12 +391,14 @@ async function processMessage(config, state, message, path) {
     let result;
     if (event.state === "reply_rate_limited" && event.result_body) {
       result = event.result_body;
+    } else if (routed.kind === "local_runner") {
+      result = await runLocalRunner(config, state, path, routed, event, key, attempt);
     } else {
       const suffix = attempt > 1 ? `:retry:${attempt}` : "";
       result = await sendSession(config, state, path, routed.sessionId, routed.body, `${config.profile}:${key}:forward${suffix}`);
     }
     event.retried = false;
-    if (thinkingFailed(result)) {
+    if (routed.kind === "web_chat" && thinkingFailed(result)) {
       event.retried = true;
       result = await sendSession(config, state, path, routed.sessionId, "continue", `${config.profile}:${key}:continue:${attempt}`);
     }
@@ -282,7 +406,7 @@ async function processMessage(config, state, message, path) {
     event.result_body = result;
     event.updated_at = new Date().toISOString();
     saveState(path, state);
-    const reply = `[from:${routed.alias}]\n${result}`.slice(0, maxMessageChars);
+    const reply = `[from:${routed.alias || "LOCAL_RUNNER"}]\n${result}`.slice(0, maxMessageChars);
     try {
       await sendSession(config, state, path, config.controller_session, reply, `${config.profile}:${key}:reply:${attempt}`);
       event.state = "replied";

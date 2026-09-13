@@ -201,6 +201,7 @@ Grok Custom MCP UI 与可用范围以 xAI 的
 `webcodex run` 与 `webcodex share` 会绑定一个已经配置好的仓库，并暴露一组较小的 task-oriented MCP 工具：
 
 ```text
+route_dispatch
 task_start
 task_list
 task_resume
@@ -216,6 +217,13 @@ task_cancel
 task_finish
 code_impact
 ```
+
+`route_dispatch` 是本地执行的统一入口：它只接受绑定 Project 的
+`destination.kind=local_runner`，先创建 `normal` task，再提交本地 Codex CLI
+（GPT-6 Astra、medium），结果通过 `task_review` 读取。`destination.project` 必须与
+当前 Connector 的 executor project 完全一致；跨 Project 会 fail closed。长任务由
+Connector 的 durable task/execution 状态承载，调用方按返回的 `task_id` 和 `run_id`
+轮询，不要用浏览器插件补发结果。
 
 从 `task_start` 开始。Connector 已经知道当前 Project，因此 prompt 不需要 runtime project id 或 project discovery。返回的 `task_id` 是该 Connector task 的 durable handle；明确继续旧工作时使用 `task_resume(task_id)`。不要假设同一个 chat、HTTP/MCP connection 或 credential 会自动 resume 之前的任务。
 

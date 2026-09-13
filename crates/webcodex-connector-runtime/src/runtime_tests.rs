@@ -229,6 +229,56 @@ async fn start_normal(fx: &Fixture) -> ConnectorCallOutcome {
 }
 
 #[tokio::test]
+async fn route_dispatch_starts_the_bound_codex_worker() {
+    let fx = fixture();
+    let out = fx
+        .call(
+            "route_dispatch",
+            json!({
+                "destination": {"kind": "local_runner", "project": "agent:hosted:project"},
+                "prompt": "read the repository name",
+                "mode": "serial",
+                "acceptance": ["return the name"]
+            }),
+        )
+        .await;
+    assert!(out.ok, "{}", out.body);
+    assert!(out.body["task_id"]
+        .as_str()
+        .unwrap()
+        .starts_with("wc_task_"));
+    assert_eq!(
+        out.body["data"]["route_dispatch"]["destination"],
+        "local_runner"
+    );
+    assert_eq!(
+        out.body["data"]["execution"]["operation_id"]
+            .as_str()
+            .unwrap()
+            .starts_with("route-"),
+        true
+    );
+    assert_eq!(fx.host.starts.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn route_dispatch_rejects_a_different_project() {
+    let fx = fixture();
+    let out = fx
+        .call(
+            "route_dispatch",
+            json!({
+                "destination": {"kind": "local_runner", "project": "agent:other:project"},
+                "prompt": "do not run",
+                "acceptance": ["no execution"]
+            }),
+        )
+        .await;
+    assert_eq!(out.body["error"]["code"], "invalid_arguments");
+    assert_eq!(fx.host.starts.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn unknown_capability_is_protocol_error_before_auth() {
     let fx = fixture();
     let out = fx

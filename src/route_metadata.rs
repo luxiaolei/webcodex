@@ -108,6 +108,7 @@ pub(crate) enum RouteId {
     McpGet,
     McpPost,
     ConnectorReadiness,
+    ConnectorRouteDispatch,
     ConnectorTaskStart,
     ConnectorTaskList,
     ConnectorTaskResume,

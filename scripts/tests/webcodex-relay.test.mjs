@@ -107,6 +107,86 @@ test("processMessage forwards the prompt from a valid structured route", async (
   assert.equal(state.events["structured-1"].state, "replied");
 });
 
+test("processMessage dispatches a local_runner route through Runner and Codex CLI", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-local-runner-"));
+  const statePath = join(root, "state.json");
+  const state = { version: 1, profile: "quantcompany", ignored_message_ids: [], events: {} };
+  const config = {
+    api_url: "http://webcodex.test",
+    provider_url: "http://provider.test",
+    profile: "quantcompany",
+    project: "agent:test:quantcompany",
+    controller_session: "wc_chat_controller",
+    targets: {},
+    min_send_interval_ms: 0,
+    poll_ms: 1_000,
+    local_runner_max_wait_ms: 10_000,
+  };
+  const calls = [];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push({ url, body });
+    if (url.endsWith("/api/connector/task/start")) {
+      assert.match(body.goal, /读取仓库并只返回名称/);
+      assert.match(body.goal, /返回结果/);
+      return Response.json({ ok: true, task_id: "wc_task_local123", run_id: "wc_run_local123", data: {} });
+    }
+    if (url.endsWith("/api/connector/commands/run")) {
+      assert.match(body.command, /codex exec .*--model gpt-6-astra .*medium/);
+      assert.match(body.command, /读取仓库并只返回名称/);
+      return Response.json({
+        ok: true,
+        task_id: body.task_id,
+        data: { execution: { execution_status: "running", capability_outcome: "in_progress" } },
+      });
+    }
+    if (url.endsWith("/api/connector/task/review")) {
+      assert.equal(body.task_id, "wc_task_local123");
+      return Response.json({
+        ok: true,
+        task_id: body.task_id,
+        data: {
+          execution: {
+            execution_status: "succeeded",
+            capability_outcome: "completed",
+            exit_code: 0,
+            output_tail: { stdout: "本地 Codex 已完成\n", stderr: "", bounded: true },
+          },
+        },
+      });
+    }
+    if (url.endsWith("/api/chat/session")) {
+      assert.equal(body.action, "send");
+      assert.equal(body.session_id, "wc_chat_controller");
+      assert.equal(body.body, "[from:LOCAL_RUNNER]\n本地 Codex 已完成");
+      return Response.json({ state: "completed", assistant_body: "已回传" });
+    }
+    throw new Error(`unexpected call: ${url}`);
+  };
+  try {
+    await processMessage(config, state, {
+      message_id: "local-1",
+      role: "user",
+      text: JSON.stringify({
+        version: 1,
+        destination: { kind: "local_runner", project: "agent:test:quantcompany" },
+        prompt: "读取仓库并只返回名称",
+        mode: "serial",
+        acceptance: ["返回结果"],
+      }),
+    }, statePath);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+  assert.equal(calls.filter(({ url }) => url.endsWith("/api/connector/task/start")).length, 1);
+  assert.equal(calls.filter(({ url }) => url.endsWith("/api/connector/commands/run")).length, 1);
+  assert.equal(state.events["local-1"].target_kind, "local_runner");
+  assert.equal(state.events["local-1"].local_task_id, "wc_task_local123");
+  assert.equal(state.events["local-1"].state, "replied");
+  assert.equal(state.events["local-1"].result_body, "本地 Codex 已完成");
+});
+
 test("processMessage repairs malformed structured content once before forwarding", async () => {
   const root = await mkdtemp(join(tmpdir(), "webcodex-relay-repair-"));
   const statePath = join(root, "state.json");

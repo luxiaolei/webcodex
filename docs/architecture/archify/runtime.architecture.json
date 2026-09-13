@@ -56,7 +56,7 @@
       "id": "local_mcp",
       "type": "backend",
       "label": "WebCodex MCP",
-      "sublabel": "/mcp · task_start / task_review",
+      "sublabel": "/mcp · route_dispatch / review",
       "pos": [
         260,
         540
@@ -258,7 +258,7 @@
       "id": "caller-mcp",
       "from": "caller",
       "to": "local_mcp",
-      "label": "当前：MCP task_start / task_review",
+      "label": "MCP route_dispatch / review",
       "variant": "dashed",
       "route": "orthogonal-v",
       "fromSide": "bottom",
@@ -281,7 +281,7 @@
       "id": "mcp-runner",
       "from": "local_mcp",
       "to": "runner",
-      "label": "当前 Runner 任务；目标由父 CLI 启动子 CLI",
+      "label": "route_dispatch → task_start → commands_run",
       "variant": "emphasis",
       "route": "orthogonal-h",
       "labelDy": 60
@@ -311,7 +311,7 @@
       "id": "thread-runner",
       "from": "thread_agent",
       "to": "runner",
-      "label": "spawn / resume Worker Codex CLI（子）",
+      "label": "local_runner → Codex CLI Worker（子）",
       "variant": "emphasis",
       "route": "orthogonal-v",
       "fromSide": "bottom",
@@ -389,7 +389,7 @@
       "dot": "cyan",
       "title": "真正的父子关系",
       "items": [
-        "Chat 总控 → MCP → Router Codex CLI（父）；父 CLI → codex exec / resume → Worker Codex CLI（子）。"
+        "Chat 总控 → MCP route_dispatch → Router Codex CLI（父）；local_runner → codex exec → Worker Codex CLI（子）。"
       ]
     },
     {
@@ -403,7 +403,7 @@
       "dot": "rose",
       "title": "持久化和边界",
       "items": [
-        "WebCodex 保存 operation、父/子 session_id 和 receipt；失败改道由 Chat 总控决定，子 CLI 不递归派发。"
+        "WebCodex 保存 operation、task/run 和 receipt；失败改道由 Chat 总控决定，子 CLI 不递归派发。"
       ]
     }
   ]

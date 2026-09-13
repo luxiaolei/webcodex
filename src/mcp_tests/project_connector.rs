@@ -195,7 +195,7 @@ async fn http_project_connector_lists_and_dispatches_only_project_capabilities()
         .await;
     assert_eq!(effective_status(&schema), StatusCode::OK);
     let schema_body: Value = schema.take_json().await.unwrap();
-    assert_eq!(schema_body["paths"].as_object().unwrap().len(), 14);
+    assert_eq!(schema_body["paths"].as_object().unwrap().len(), 15);
     assert!(schema_body["paths"]
         .get("/api/connector/task/start")
         .is_some());
@@ -235,7 +235,7 @@ async fn http_project_connector_lists_and_dispatches_only_project_capabilities()
         .map(|tool| tool["name"].as_str().unwrap())
         .collect::<Vec<_>>();
     assert_eq!(names, crate::connector_runtime::surface::CAPABILITY_NAMES);
-    assert_eq!(names.len(), 14);
+    assert_eq!(names.len(), 15);
     for raw_runtime_tool in ["runtime_status", "work_on_project", "call_runtime_tool"] {
         assert!(!names.contains(&raw_runtime_tool));
     }

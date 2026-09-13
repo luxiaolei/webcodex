@@ -237,6 +237,7 @@ current Grok Custom MCP UI and availability.
 `webcodex run` and `webcodex share` bind one configured repository and expose a small task-oriented MCP surface:
 
 ```text
+route_dispatch
 task_start
 task_list
 task_resume
@@ -252,6 +253,14 @@ task_cancel
 task_finish
 code_impact
 ```
+
+`route_dispatch` is the local execution entry point. It accepts only a
+project-bound `destination.kind=local_runner`, starts a writable `normal` task,
+and submits the local Codex CLI with GPT-6 Astra at medium reasoning. Read the
+result through `task_review`; `destination.project` must exactly match the
+Connector executor project, so cross-project dispatch fails closed. Long jobs
+remain in the durable task/execution state and are polled with the returned
+`task_id` and `run_id`; a browser relay is not needed to return the result.
 
 Start with `task_start`. The Connector already knows the project, so prompts do not need runtime project ids or project discovery. A returned `task_id` is the durable handle for that Connector task; use `task_resume(task_id)` when you explicitly want to continue it. Do not assume that the same chat, HTTP/MCP connection, or credential automatically resumes prior work.
 

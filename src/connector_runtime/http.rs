@@ -10,6 +10,7 @@ pub(crate) fn routes() -> Router {
     use crate::route_metadata::{api_path, RouteId};
     Router::new()
         .push(Router::with_path(api_path(RouteId::ConnectorReadiness)).post(readiness))
+        .push(Router::with_path(api_path(RouteId::ConnectorRouteDispatch)).post(route_dispatch))
         .push(Router::with_path(api_path(RouteId::ConnectorTaskStart)).post(task_start))
         .push(Router::with_path(api_path(RouteId::ConnectorTaskList)).post(task_list))
         .push(Router::with_path(api_path(RouteId::ConnectorTaskResume)).post(task_resume))
@@ -142,6 +143,7 @@ macro_rules! connector_handlers {
 }
 
 connector_handlers! {
+    route_dispatch,
     task_start,
     task_list,
     task_resume,

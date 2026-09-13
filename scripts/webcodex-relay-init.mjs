@@ -109,6 +109,7 @@ if (!input.targets || typeof input.targets !== "object") throw new Error("config
 const output = {
   profile: input.profile,
   api_url: apiUrl,
+  project: input.project,
   provider_url: input.provider_url,
   poll_ms: input.poll_ms ?? 5000,
   min_send_interval_ms: input.min_send_interval_ms ?? 15000,
