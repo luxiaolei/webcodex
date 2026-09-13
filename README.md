@@ -35,7 +35,7 @@ npx --yes @yyjeqhc/webcodex share
 
 ### Chat session bridge
 
-Use the authenticated `POST /api/chat/session` action when a ChatGPT Web turn needs a durable binding to a local Runner Project. `create` selects an exact caller-visible Project, `send` starts an asynchronous turn through the local `codex-chatgpt-web` adapter, and `operation` or `read` retrieves its state and retained messages. `pending`, `completed`, `failed`, and `unknown` remain separate states; ambiguous provider or network outcomes stay `unknown` and are never blindly retried. Configure `WEBCODEX_CHATGPT_WEB_URL`, `WEBCODEX_CHATGPT_WEB_MODEL`, and the optional `WEBCODEX_CHATGPT_WEB_TOKEN`. The Project is a local WebCodex binding; native ChatGPT Project membership and automatic background wake depend on the adapter and host. See [Chat session bridge](docs/chat-session.md).
+Use the authenticated `POST /api/chat/session` action when a ChatGPT Web turn needs a durable binding to a local Runner Project. `create` selects an exact caller-visible Project, `send` starts an asynchronous turn through the embedded `codex-chatgpt-web` adapter, and `operation` or `read` retrieves its state and retained messages. Run the unified runtime setup once per machine/account; every project then reuses the same provider profile. `pending`, `completed`, `failed`, and `unknown` remain separate states; ambiguous provider or network outcomes stay `unknown` and are never blindly retried. Configure `WEBCODEX_CHATGPT_WEB_URL`, `WEBCODEX_CHATGPT_WEB_MODEL`, and the optional `WEBCODEX_CHATGPT_WEB_TOKEN` only when overriding the shared defaults. The Project is a local WebCodex binding; native ChatGPT Project membership and automatic background wake depend on the adapter and host. See [Chat session bridge](docs/chat-session.md) and [Unified Chat runtime](docs/unified-chat-runtime.md).
 
 ## Why WebCodex?
 
@@ -89,6 +89,7 @@ Those are follow-up operating concerns, not concepts a first-time user should ha
 - [Full Setup](docs/PERSONAL_SETUP.md) — CLI, existing Server, Linux, and advanced regular Server + Runner setup
 - [Quick Trial](docs/QUICK_START.md) — temporarily try one repository with `share`
 - [Chat session bridge](docs/chat-session.md) — durable ChatGPT Web sessions, local Project binding, and asynchronous operation polling
+- [Unified Chat runtime](docs/unified-chat-runtime.md) — one embedded provider, one global profile, and multi-project operation
 - [MCP](docs/MCP.md) — ChatGPT, Claude, authentication choices, and MCP reference
 - [Deployment](docs/DEPLOYMENT.md) — production, self-hosting, and advanced operations
 - [Troubleshooting](docs/TROUBLESHOOTING.md) — connection and runtime problems

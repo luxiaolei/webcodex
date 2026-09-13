@@ -17,6 +17,9 @@ data*
 # Frontend dependencies
 /frontend/node_modules
 
+# Vendored ChatGPT Web adapter dependencies
+/vendor/**/node_modules
+
 # Local sensitive deployment config — NEVER commit these.
 # They contain real server URLs, tokens, and host paths. If a token was ever
 # committed or exposed, rotate WEBCODEX_TOKEN immediately.
