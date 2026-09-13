@@ -43,10 +43,8 @@ function rateLimitDelay(streak) {
 }
 
 async function pageHasRateLimit(page) {
-  return page.evaluate(() => {
-    const turns = document.querySelectorAll('[data-turn="assistant"]');
-    return turns.length === 0 && /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快|rate[_ -]?limit/i.test(document.body?.innerText || "");
-  });
+  return page.evaluate(() => [...document.querySelectorAll('[role="dialog"]')]
+    .some((node) => /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快|rate[_ -]?limit/i.test(node.textContent || "")));
 }
 
 async function waitForSendWindow() {
@@ -203,12 +201,12 @@ async function runResponse(payload) {
   const task = await runtimeTask();
   await waitForSendWindow();
   const page = await pageForSession(task, id, sessions, webProjectUrl);
-  if (await pageHasRateLimit(page)) throw markRateLimited(true);
   const before = await currentTurnCount(page);
+  const rateLimitDeadline = Date.now() + 60_000;
   markSendStarted();
   await page.fill("loc=css:#prompt-textarea", text);
   await page.click('loc=css:button[aria-label="Send prompt"]');
-  await page.waitForFunction((turnCount) => {
+  await page.waitForFunction(({ turnCount, rateLimitDeadline: deadline }) => {
     const turns = document.querySelectorAll('[data-turn="assistant"]');
     const latest = turns[turns.length - 1];
     const message = latest?.querySelector('[data-message-author-role="assistant"]');
@@ -217,8 +215,8 @@ async function runResponse(payload) {
     const rateLimited = /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快/i.test(document.body?.innerText || "");
     const placeholder = /^(?:pro\s+thinking|thinking|思考中|正在思考)\s*$/i.test(text);
     const ready = turns.length > turnCount && !stop && Boolean(text) && !placeholder;
-    return ready || (!ready && turns.length <= turnCount && rateLimited);
-  }, before, { timeout: 180_000 });
+    return ready || (!ready && turns.length <= turnCount && rateLimited && Date.now() >= deadline);
+  }, { turnCount: before, rateLimitDeadline }, { timeout: 180_000 });
   const result = await page.evaluate(() => {
     const turns = [...document.querySelectorAll('[data-turn="assistant"]')];
     const turn = turns.at(-1);
