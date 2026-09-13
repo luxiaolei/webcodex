@@ -41,7 +41,7 @@ function loadConfig(path) {
   return {
     api_url: String(config.api_url || process.env.WEBCODEX_URL || defaultApi).replace(/\/$/, ""),
     provider_url: String(config.provider_url || process.env.WEBCODEX_CHATGPT_WEB_URL || defaultProvider).replace(/\/$/, ""),
-    token: config.token || process.env.WEBCODEX_TOKEN || "",
+    token: process.env.WEBCODEX_TOKEN || "",
     profile: config.profile,
     controller_session: config.controller_session,
     targets: config.targets,
