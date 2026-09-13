@@ -187,6 +187,7 @@ pub(crate) enum RouteId {
     ProjectsDiscardUntracked,
     ProjectsRunJob,
     RuntimeStatus,
+    ChatSession,
     OAuthClientsCreate,
     OAuthClientsList,
     OAuthClientsUpdateScopes,
@@ -397,13 +398,14 @@ mod tests {
         source.split("#[cfg(test)]").next().unwrap_or(source)
     }
 
-    fn mounted_route_sources() -> [&'static str; 5] {
+    fn mounted_route_sources() -> [&'static str; 6] {
         [
             include_str!("lib.rs"),
             production_prefix(include_str!("connector_runtime/http.rs")),
             production_prefix(include_str!("host_console_http.rs")),
             production_prefix(include_str!("runtime_console_http.rs")),
             production_prefix(include_str!("admin_http.rs")),
+            production_prefix(include_str!("chat_http.rs")),
         ]
     }
 
@@ -453,7 +455,7 @@ mod tests {
             AdminWebStylesCss as usize + 1,
             "canonical iteration must cover every RouteId exactly once",
         );
-        assert_eq!(iter_routes().count(), 136, "canonical route closure");
+        assert_eq!(iter_routes().count(), 137, "canonical route closure");
         assert_eq!(lookup("GET", "/mcp").unwrap().id, McpGet);
         assert_eq!(lookup("POST", "/mcp").unwrap().id, McpPost);
     }
@@ -581,7 +583,7 @@ mod tests {
             );
             references += 1;
         }
-        assert_eq!(references, 136, "A2 production leaf RouteId closure");
+        assert_eq!(references, 137, "A2 production leaf RouteId closure");
     }
 
     #[test]

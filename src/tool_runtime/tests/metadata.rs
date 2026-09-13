@@ -3021,7 +3021,7 @@ async fn external_provider_discovery_cannot_change_public_tool_or_openapi_surfac
         .values()
         .map(|path| path.as_object().unwrap().len())
         .sum();
-    assert_eq!(operation_count, 16);
+    assert_eq!(operation_count, 17);
 }
 
 #[tokio::test]

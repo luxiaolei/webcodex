@@ -4,8 +4,8 @@ use super::{
     RouteSpec, RouteSurface::*,
 };
 use webcodex_core::authority::{
-    OAuthBodyAwarePolicy, OAuthRouteScopePolicy::*, SCOPE_JOB_RUN, SCOPE_PROJECT_READ,
-    SCOPE_PROJECT_WRITE, SCOPE_RUNNER_MANAGE, SCOPE_RUNTIME_READ,
+    OAuthBodyAwarePolicy, OAuthRouteScopePolicy::*, SCOPE_COMMUNICATION_READ, SCOPE_JOB_RUN,
+    SCOPE_PROJECT_READ, SCOPE_PROJECT_WRITE, SCOPE_RUNNER_MANAGE, SCOPE_RUNTIME_READ,
 };
 
 pub(super) const ROUTES: &[RouteSpec] = &[
@@ -216,6 +216,16 @@ pub(super) const ROUTES: &[RouteSpec] = &[
         Require(SCOPE_RUNTIME_READ),
         RuntimeApi,
         PublicAction(openapi::GET_RUNTIME_STATUS),
+        Report,
+        AuthMiddleware,
+    ),
+    route(
+        ChatSession,
+        Post,
+        "/api/chat/session",
+        Require(SCOPE_COMMUNICATION_READ),
+        RuntimeApi,
+        PublicAction(openapi::CHAT_SESSION),
         Report,
         AuthMiddleware,
     ),

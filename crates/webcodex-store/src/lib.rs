@@ -12,6 +12,7 @@ mod admin_project_lifecycle;
 mod agent_task;
 mod agent_wake;
 mod audit;
+mod chat_session;
 mod communication;
 mod execution_model;
 mod executions;
@@ -42,6 +43,11 @@ pub use self::agent_wake::{
     AgentWakeAttemptState, AgentWakeBootstrapSummary, AgentWakeClaim, AgentWakeConsumeResult,
     AgentWakeEnvelope, AgentWakeExplicitActivation, AgentWakePrepared, AgentWakeRecord,
     AgentWakeState, AGENT_WAKE_CONSUME_TOKEN_PREFIX, AGENT_WAKE_ID_PREFIX,
+};
+pub use self::chat_session::{
+    ChatOperationStatus, ChatSendEnvelope, ChatSendStart, ChatSessionDetail, ChatSessionMessage,
+    ChatSessionMutation, ChatSessionState, ChatSessionSummary, NewChatSession,
+    CHAT_OPERATION_ID_PREFIX, CHAT_SESSION_ID_PREFIX, MAX_CHAT_MESSAGE_LIST_LIMIT,
 };
 pub use self::communication::{
     AgentEndpointLifecycle, AgentEndpointMutation, AgentEndpointRecord, AgentIdentityMutation,

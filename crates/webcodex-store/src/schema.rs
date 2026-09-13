@@ -649,6 +649,7 @@ impl Database {
         // communication domain. Workflow Session and project Memory ledgers
         // remain separate authoritative stores.
         Self::ensure_communication_schema(&mut conn)?;
+        Self::ensure_chat_session_schema(&mut conn)?;
         // Agent Wake is a distinct durable continuation/outbox domain. It is
         // initialized only after Agent, Endpoint, Message, and Inbox tables so
         // all stable references are enforceable by foreign keys.

@@ -19,6 +19,7 @@ mod agent_continuation_tests;
 mod agent_wake;
 mod audit_http;
 mod auth;
+mod chat_http;
 mod client_window;
 mod config;
 mod connector_runtime;
@@ -370,6 +371,7 @@ only for local/trusted-network demos."
         .push(connector_runtime::http::routes())
         .push(host_console_http::routes())
         .push(runtime_console_http::routes())
+        .push(chat_http::routes())
         .push(admin_http::routes())
         .push(
             Router::with_path(route_metadata::api_path(RouteId::ToolsList))
