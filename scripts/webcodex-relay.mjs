@@ -9,7 +9,7 @@ import { chmodSync, closeSync, mkdirSync, openSync, readFileSync, renameSync, un
 import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const defaultApi = "http://127.0.0.1:17840";
+const defaultApi = "http://127.0.0.1:8080";
 const defaultProvider = "http://127.0.0.1:17841";
 const maxMessageChars = 32_768;
 const maxWaitMs = 180_000;

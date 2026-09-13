@@ -1,6 +1,6 @@
 {
   "profile": "quantcompany",
-  "api_url": "http://127.0.0.1:17840",
+  "api_url": "http://127.0.0.1:8080",
   "project": "agent:workstation:REPLACE_WITH_VISIBLE_WEBCODEX_PROJECT_ID",
   "controller": {
     "title": "Quant Company - WebCodex 总控",
