@@ -47,6 +47,17 @@ async function pageHasRateLimit(page) {
     .some((node) => /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快|rate[_ -]?limit/i.test(node.textContent || "")));
 }
 
+async function dismissRateLimitDialog(page) {
+  if (!await pageHasRateLimit(page)) return;
+  await page.evaluate(() => {
+    const dialog = [...document.querySelectorAll('[role="dialog"]')]
+      .find((node) => /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快|rate[_ -]?limit/i.test(node.textContent || ""));
+    const button = [...(dialog?.querySelectorAll("button") || [])]
+      .find((node) => (node.textContent || "").trim() === "Got it");
+    button?.click();
+  });
+}
+
 async function waitForSendWindow() {
   const delay = nextSendAt - Date.now();
   if (delay > 0) await sleep(delay);
@@ -201,6 +212,7 @@ async function runResponse(payload) {
   const task = await runtimeTask();
   await waitForSendWindow();
   const page = await pageForSession(task, id, sessions, webProjectUrl);
+  await dismissRateLimitDialog(page);
   const before = await currentTurnCount(page);
   const rateLimitDeadline = Date.now() + 60_000;
   markSendStarted();
