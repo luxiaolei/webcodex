@@ -35,7 +35,7 @@ npx --yes @yyjeqhc/webcodex share
 
 ### Chat session bridge
 
-Use the authenticated `POST /api/chat/session` action when a ChatGPT Web turn needs a durable binding to a local Runner Project. `create` selects an exact caller-visible Project, `send` starts an asynchronous turn through the shared signed-in Ego Browser provider, and `operation` or `read` retrieves its state and retained messages. Run the unified runtime setup once per machine/account; every project then reuses the same provider session. `pending`, `completed`, `failed`, and `unknown` remain separate states; ambiguous provider or network outcomes stay `unknown` and are never blindly retried. Configure `WEBCODEX_CHATGPT_WEB_URL`, `WEBCODEX_CHATGPT_WEB_MODEL`, and the optional `WEBCODEX_CHATGPT_WEB_TOKEN` only when overriding the shared defaults. Set `WEBCODEX_CHATGPT_WEB_PROVIDER=codex-chatgpt-web` only for the explicit legacy adapter fallback. The Project is a local WebCodex binding; native ChatGPT Project membership and automatic background wake depend on the provider and host. See [Chat session bridge](docs/chat-session.md) and [Unified Chat runtime](docs/unified-chat-runtime.md).
+Use the authenticated `POST /api/chat/session` action when a ChatGPT Web turn needs a durable binding to a local Runner Project. `create` selects an exact caller-visible Project and may include `web_project_url` to place the first native ChatGPT Chat in a specified ChatGPT Project; `send` starts an asynchronous turn through the shared signed-in Ego Browser provider, and `operation` or `read` retrieves its state and retained messages. Run the unified runtime setup once per machine/account; every project then reuses the same provider session. `pending`, `completed`, `failed`, and `unknown` remain separate states; ambiguous provider or network outcomes stay `unknown` and are never blindly retried. Configure `WEBCODEX_CHATGPT_WEB_URL`, `WEBCODEX_CHATGPT_WEB_MODEL`, and the optional `WEBCODEX_CHATGPT_WEB_TOKEN` only when overriding the shared defaults. Set `WEBCODEX_CHATGPT_WEB_PROVIDER=codex-chatgpt-web` only for the explicit legacy adapter fallback. `project` is the local WebCodex binding; `web_project_url` is the optional native ChatGPT Project binding. See [Chat session bridge](docs/chat-session.md), [Unified Chat runtime](docs/unified-chat-runtime.md), and the [agent onboarding guide](docs/AGENT_ONBOARDING.md).
 
 ## Why WebCodex?
 
@@ -90,6 +90,7 @@ Those are follow-up operating concerns, not concepts a first-time user should ha
 - [Quick Trial](docs/QUICK_START.md) — temporarily try one repository with `share`
 - [Chat session bridge](docs/chat-session.md) — durable ChatGPT Web sessions, local Project binding, and asynchronous operation polling
 - [Unified Chat runtime](docs/unified-chat-runtime.md) — one embedded provider, one global profile, and multi-project operation
+- [Agent onboarding and architecture diagrams](docs/AGENT_ONBOARDING.md) — reusable setup, dependency locations, API flow, and Archify diagrams
 - [MCP](docs/MCP.md) — ChatGPT, Claude, authentication choices, and the real Work-surface MCP smoke test
 - [Deployment](docs/DEPLOYMENT.md) — production, self-hosting, and advanced operations
 - [Troubleshooting](docs/TROUBLESHOOTING.md) — connection and runtime problems

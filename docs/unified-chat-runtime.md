@@ -25,13 +25,18 @@ The vendored adapter remains available for hosts without Ego Browser by setting
 
 Each caller selects an exact visible WebCodex Project in
 `POST /api/chat/session`; this is request data, not project configuration. The
-same runtime can therefore serve multiple projects and multiple durable Chat
-sessions while preserving project-scoped tool permissions.
+optional `web_project_url` selects the native ChatGPT Project home used on the
+first browser send. The same runtime can therefore serve multiple local
+projects and multiple durable Chat sessions while preserving project-scoped
+tool permissions; the browser account and TaskSpace remain shared runtime
+state.
 
-The setup command is intentionally one-time and account-scoped. It does not
-claim native ChatGPT Project membership or make arbitrary existing ChatGPT
-conversations adoptable. The provider must still report a healthy browser
-session before a ChatGPT turn is considered runnable.
+The setup command is intentionally one-time and account-scoped. A native
+ChatGPT Project is selected per session with `web_project_url`; the URL is
+validated and persisted with the session, then reused on every send. Omitting
+it creates a regular ChatGPT Chat. The runtime does not make arbitrary existing
+ChatGPT conversations adoptable. The provider must still report a healthy
+browser session before a ChatGPT turn is considered runnable.
 
 The local-tool hop is the WebCodex MCP endpoint, not a second ChatGPT Web
 provider. A ChatGPT Work task reaches that endpoint through the configured MCP

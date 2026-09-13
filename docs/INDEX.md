@@ -11,6 +11,7 @@ Start with the goal that matches what you are trying to do.
 - [Full Setup](PERSONAL_SETUP.md) — CLI, existing Server, Linux, and advanced regular Server + Runner setup
 - [AI-assisted setup](AI_ONBOARDING.md) — have an AI agent configure WebCodex using ordinary user language
 - [MCP](MCP.md) — ChatGPT, Claude, and other MCP clients
+- [Agent onboarding and architecture diagrams](AGENT_ONBOARDING.md) — reusable Chat bridge, MCP loop, dependency locations, and Archify artifacts
 
 ## I only want to try it for a few minutes
 
@@ -38,6 +39,7 @@ Start with the goal that matches what you are trying to do.
 ## I want to understand or extend WebCodex
 
 - [Architecture](ARCHITECTURE.md) — how the major components fit together
+- [Unified Chat runtime](unified-chat-runtime.md) — Ego Browser provider reuse and native ChatGPT Project binding
 - [Coding Workflow](CODING_WORKFLOW.md) — task bootstrap, guidance, validation, and closeout
 - [Native Tool Plugins](PLUGINS.md) — add Runner-local tools with any executable language and no MCP SDK
 - [Computer Use roadmap](COMPUTER_USE.md) — semantic-first desktop automation direction and validation priorities

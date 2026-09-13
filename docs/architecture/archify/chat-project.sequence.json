@@ -1,0 +1,249 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Chat Session 到网页端 Project Chat 时序",
+    "locale": "zh-CN",
+    "output": "chat-project.sequence.html",
+    "viewBox": [
+      1080,
+      620
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "create-native",
+        "label": "创建原生 Chat",
+        "focus": [
+          "caller",
+          "api",
+          "store",
+          "ego",
+          "chatgpt"
+        ],
+        "note": "首次发送将消息写入指定网页 Project 的新 Chat。"
+      },
+      {
+        "id": "local-mcp",
+        "label": "本地工具调用",
+        "focus": [
+          "chatgpt",
+          "mcp",
+          "runner",
+          "caller"
+        ],
+        "note": "ChatGPT 通过 MCP 进入本地 Runner。"
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "Caller",
+      "sublabel": "agent"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Chat API",
+      "sublabel": "/api/chat/session"
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Store",
+      "sublabel": "SQLite binding"
+    },
+    {
+      "id": "ego",
+      "type": "backend",
+      "label": "Ego",
+      "sublabel": "shared TaskSpace"
+    },
+    {
+      "id": "chatgpt",
+      "type": "external",
+      "label": "ChatGPT",
+      "sublabel": "Project + Chat"
+    },
+    {
+      "id": "mcp",
+      "type": "messagebus",
+      "label": "MCP",
+      "sublabel": "/mcp tools"
+    },
+    {
+      "id": "runner",
+      "type": "backend",
+      "label": "Runner",
+      "sublabel": "local project"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 240,
+      "label": "绑定并创建"
+    },
+    {
+      "from": 255,
+      "to": 410,
+      "label": "首次发送"
+    },
+    {
+      "from": 425,
+      "to": 560,
+      "label": "MCP 工具闭环"
+    }
+  ],
+  "messages": [
+    {
+      "from": "caller",
+      "to": "api",
+      "y": 170,
+      "label": "POST create + bindings",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "store",
+      "y": 200,
+      "label": "validate + persist",
+      "variant": "emphasis"
+    },
+    {
+      "from": "store",
+      "to": "api",
+      "y": 230,
+      "label": "session_id",
+      "variant": "return"
+    },
+    {
+      "from": "caller",
+      "to": "api",
+      "y": 265,
+      "label": "POST send body",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "ego",
+      "y": 300,
+      "label": "Responses turn",
+      "variant": "emphasis"
+    },
+    {
+      "from": "ego",
+      "to": "chatgpt",
+      "y": 335,
+      "label": "goto /project",
+      "variant": "emphasis"
+    },
+    {
+      "from": "ego",
+      "to": "chatgpt",
+      "y": 370,
+      "label": "composer creates /c/...",
+      "variant": "default"
+    },
+    {
+      "from": "chatgpt",
+      "to": "ego",
+      "y": 405,
+      "label": "assistant output",
+      "variant": "return"
+    },
+    {
+      "from": "chatgpt",
+      "to": "mcp",
+      "y": 440,
+      "label": "Work calls MCP",
+      "variant": "dashed"
+    },
+    {
+      "from": "mcp",
+      "to": "runner",
+      "y": 475,
+      "label": "task_start / files",
+      "variant": "emphasis"
+    },
+    {
+      "from": "runner",
+      "to": "mcp",
+      "y": 510,
+      "label": "tool result",
+      "variant": "return"
+    },
+    {
+      "from": "caller",
+      "to": "api",
+      "y": 530,
+      "label": "GET operation / read",
+      "variant": "default"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "api",
+      "from": 164,
+      "to": 240,
+      "type": "backend"
+    },
+    {
+      "participant": "store",
+      "from": 194,
+      "to": 238,
+      "type": "database"
+    },
+    {
+      "participant": "api",
+      "from": 259,
+      "to": 555,
+      "type": "backend"
+    },
+    {
+      "participant": "ego",
+      "from": 294,
+      "to": 419,
+      "type": "backend"
+    },
+    {
+      "participant": "chatgpt",
+      "from": 329,
+      "to": 414,
+      "type": "external"
+    },
+    {
+      "participant": "mcp",
+      "from": 434,
+      "to": 524,
+      "type": "messagebus"
+    },
+    {
+      "participant": "runner",
+      "from": 469,
+      "to": 514,
+      "type": "backend"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "创建时机",
+      "items": [
+        "create 只持久化双重绑定",
+        "首次 send 才在 Project 首页生成原生 Chat"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "持续会话与工具",
+      "items": [
+        "后续 send 复用 Ego page；operation/read 读取状态",
+        "MCP task 触发 Runner，结果回到 Chat"
+      ]
+    }
+  ]
+}

@@ -17,6 +17,7 @@ serde = { version = "1", features = ["derive", "rc"] }
 serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "0.10"
 tracing = "0.1"
+url = "2"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]

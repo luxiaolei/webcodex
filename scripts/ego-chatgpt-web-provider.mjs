@@ -78,9 +78,12 @@ function sessionId(payload) {
   return value;
 }
 
-async function pageForSession(task, id, sessions) {
+async function pageForSession(task, id, sessions, webProjectUrl) {
   const saved = sessions[id];
   if (saved?.page_label) {
+    if ((saved.web_project_url || null) !== webProjectUrl) {
+      throw new Error("web_project_url does not match the existing Chat session binding");
+    }
     const page = task.page(saved.page_label);
     if (!page) throw new Error("Ego Browser page for this Chat session is unavailable");
     if (saved.url && (await page.url()) !== saved.url) await page.goto(saved.url);
@@ -88,7 +91,7 @@ async function pageForSession(task, id, sessions) {
     return page;
   }
   const page = await task.newPage();
-  await page.goto("https://chatgpt.com/");
+  await page.goto(webProjectUrl || "https://chatgpt.com/");
   await waitForComposer(page);
   return page;
 }
@@ -97,13 +100,16 @@ async function runResponse(payload) {
   const id = sessionId(payload);
   const text = userText(payload);
   const model = typeof payload.model === "string" && payload.model.trim() ? payload.model : "ego-chatgpt-web";
+  const webProjectUrl = typeof payload.metadata?.web_project_url === "string" && payload.metadata.web_project_url.trim()
+    ? payload.metadata.web_project_url.trim()
+    : null;
   const sessions = sessionState();
   const saved = sessions[id];
   if (payload.previous_response_id && payload.previous_response_id !== saved?.response_id) {
     throw new Error("previous_response_id does not match the Ego Browser session state");
   }
   const task = await runtimeTask();
-  const page = await pageForSession(task, id, sessions);
+  const page = await pageForSession(task, id, sessions, webProjectUrl);
   const before = await currentTurnCount(page);
   await page.fill("loc=css:#prompt-textarea", text);
   await page.press("loc=css:#prompt-textarea", "Enter");
@@ -124,7 +130,7 @@ async function runResponse(payload) {
   });
   if (!result.text) throw new Error("Ego Browser returned an empty assistant turn");
   const responseId = `ego_${createHash("sha256").update(`${id}\0${result.messageId || result.text}`).digest("hex").slice(0, 32)}`;
-  sessions[id] = { page_label: page.label, url: await page.url(), response_id: responseId };
+  sessions[id] = { page_label: page.label, url: await page.url(), response_id: responseId, web_project_url: webProjectUrl };
   writeJson(sessionsPath, sessions);
   return {
     id: responseId,

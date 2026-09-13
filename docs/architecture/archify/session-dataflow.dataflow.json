@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "双 Project 绑定与 Chat 数据流",
+    "locale": "zh-CN",
+    "output": "session-dataflow.dataflow.html",
+    "viewBox": [1080, 620],
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "binding", "label": "绑定数据", "focus": ["local_project", "web_url", "session"], "note": "本地 Project 与网页 Project URL 进入同一个 durable session。" },
+      { "id": "execution", "label": "执行数据", "focus": ["session", "page", "chat", "operation", "messages"], "note": "Provider page 与 ChatGPT 消息形成可观察的操作链。" },
+      { "id": "tools", "label": "本地工具", "focus": ["mcp_task", "runner_job", "tool_result", "messages"], "note": "MCP task 和 Runner 结果回到同一消息/操作读取面。" }
+    ]
+  },
+  "stages": [
+    { "label": "输入" },
+    { "label": "持久化绑定" },
+    { "label": "浏览器执行" },
+    { "label": "本地工具" },
+    { "label": "可观察输出" }
+  ],
+  "nodes": [
+    { "id": "local_project", "type": "external", "label": "project", "sublabel": "local", "stage": 0, "row": 0, "tag": "必填" },
+    { "id": "web_url", "type": "external", "label": "web_project_url", "sublabel": "Project URL", "stage": 0, "row": 1, "tag": "可选" },
+    { "id": "session", "type": "database", "label": "Chat session row", "sublabel": "绑定 + model + state", "stage": 1, "row": 1, "tag": "SQLite" },
+    { "id": "page", "type": "backend", "label": "Ego page/session", "sublabel": "page label + response_id", "stage": 2, "row": 1, "tag": "账号级 TaskSpace" },
+    { "id": "chat", "type": "external", "label": "ChatGPT Chat", "sublabel": "Project /c/...", "stage": 2, "row": 2 },
+    { "id": "operation", "type": "database", "label": "Operation", "sublabel": "pending / done / unknown", "stage": 4, "row": 0, "width": 140 },
+    { "id": "mcp_task", "type": "messagebus", "label": "MCP task", "sublabel": "task_start + call", "stage": 3, "row": 2 },
+    { "id": "runner_job", "type": "backend", "label": "Runner job", "sublabel": "files / git / cmd", "stage": 3, "row": 3 },
+    { "id": "tool_result", "type": "database", "label": "Tool result", "sublabel": "structured evidence", "stage": 4, "row": 3, "width": 140 },
+    { "id": "messages", "type": "database", "label": "Session messages", "sublabel": "user + assistant", "stage": 4, "row": 1, "width": 140 }
+  ],
+  "flows": [
+    { "from": "local_project", "to": "session", "label": "exact project", "classification": "local binding", "variant": "emphasis", "route": "vertical-channel", "labelAt": [90, 220] },
+    { "from": "web_url", "to": "session", "label": "validated URL", "classification": "web binding", "variant": "emphasis", "route": "vertical-channel", "labelAt": [300, 314] },
+    { "from": "session", "to": "page", "label": "provider metadata", "classification": "session reuse", "variant": "emphasis", "route": "straight", "labelDx": -80, "labelDy": -34 },
+    { "from": "page", "to": "chat", "label": "navigate + submit", "classification": "browser action", "variant": "emphasis", "route": "straight", "labelDy": 30 },
+    { "from": "chat", "to": "operation", "label": "status", "classification": "durable outcome", "variant": "emphasis", "route": "vertical-channel", "labelAt": [650, 220] },
+    { "from": "chat", "to": "messages", "label": "assistant body", "classification": "retained message", "variant": "default", "route": "vertical-channel", "labelAt": [850, 430] },
+    { "from": "chat", "to": "mcp_task", "label": "Work MCP", "classification": "local tool path", "variant": "dashed", "route": "vertical-channel", "labelAt": [660, 428] },
+    { "from": "mcp_task", "to": "runner_job", "label": "task + tool", "classification": "Runner execution", "variant": "emphasis", "route": "straight", "labelAt": [745, 542] },
+    { "from": "runner_job", "to": "tool_result", "label": "evidence", "classification": "structured result", "variant": "emphasis", "route": "vertical-channel", "labelAt": [868, 542] },
+    { "from": "tool_result", "to": "messages", "label": "result to Chat", "classification": "read path", "variant": "default", "route": "top-channel", "labelAt": [960, 314] },
+    { "from": "session", "to": "operation", "label": "operation id + state", "classification": "poll/read", "variant": "dashed", "route": "vertical-channel", "labelDx": 90 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "归属字段", "items": ["project = 本地权限边界", "web_project_url = 原生 Project 归属"] },
+    { "dot": "emerald", "title": "可观察状态", "items": ["操作、消息与工具结果写入 SQLite", "unknown 等待对账，不盲目重试"] }
+  ]
+}
