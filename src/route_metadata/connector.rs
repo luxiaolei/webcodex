@@ -24,6 +24,16 @@ pub(super) const ROUTES: &[RouteSpec] = &[
         AuthMiddleware,
     ),
     route(
+        ConnectorRouteDispatch,
+        Post,
+        "/api/connector/route/dispatch",
+        Require(SCOPE_JOB_RUN),
+        Connector,
+        ConnectorCapability("route_dispatch"),
+        Other,
+        AuthMiddleware,
+    ),
+    route(
         ConnectorTaskStart,
         Post,
         "/api/connector/task/start",

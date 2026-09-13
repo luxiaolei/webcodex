@@ -45,11 +45,10 @@ WebCodex SQLite。第二条是 ChatGPT 调用本地资源：MCP Work 会话启�
 MCP Server 下的两类能力，并在本地执行链中保留一层父子 Codex CLI：
 
 - `task_start` / `task_review`：现有本地执行链，进入 WebCodex Runner。
-- `route_dispatch`：目标接口；接收总控已经决定好的 `destination`，再交给
-  Router Codex CLI（父会话）。`LOCAL_RUNNER` 启动 Worker Codex CLI（子会话），
-  `WEB_CHAT` 调用
-  `/api/chat/session`，由 Ego Browser 完成网页发送和读取。这个统一工具目前
-  还没有作为现有 MCP 工具发布，文档中的“目标”不能当成已部署功能。
+- `route_dispatch`：统一执行接口；接收总控已经决定好的 `destination`，再交给
+  Router Codex CLI（父会话）。`LOCAL_RUNNER` 校验 Project 后调用 `task_start`、
+  `commands_run` 和 `task_review` 启动 Worker Codex CLI（子会话），
+  `WEB_CHAT` 调用 `/api/chat/session`，由 Ego Browser 完成网页发送和读取。
 
 Worker Codex CLI 使用 `gpt-6-astra`、`thinking=medium` 执行本地任务，不直接调用 Eagle/Ego Browser，也不应该碰网页 DOM 或 Cookie。
 浏览器只存在于本地 WebCodex 的 Provider 边界内。失败改道也由 Chat 总控根据

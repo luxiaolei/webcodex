@@ -1,6 +1,6 @@
 # 总控、路由 Agent 与执行端
 
-这套系统把“决定下一步”和“执行下一步”分开。网页 Chat 总控读取 GitHub Issue/PR 和项目状态，决定目标、优先级、串行/并行方式和验收边界，并把这些决定写进显式派发消息。本地 Thread Agent 只是轻量执行适配器：解析并校验总控给出的目标；当前已实现网页 Chat relay，ChatGPT Work 调用本地 Runner 则走独立 MCP 任务链。统一的本地目标转发仍由后续 `route_dispatch` 接口承接。
+这套系统把“决定下一步”和“执行下一步”分开。网页 Chat 总控读取 GitHub Issue/PR 和项目状态，决定目标、优先级、串行/并行方式和验收边界，并把这些决定写进显式派发消息。本地 Thread Agent 是轻量执行适配器：解析并校验总控给出的目标；`web_chat` 走 Ego Browser，`local_runner` 走项目绑定的 Runner task、Codex CLI 和 durable review。
 
 ## 先用白话看调用链
 
@@ -11,7 +11,7 @@ Chat 总控
   ├─ 当前本地链：MCP / task_start → WebCodex Runner → task_id
   └─ 当前网页链：Chat Session API / send → operation_id → Ego Browser → 目标 Web Chat
 
-目标统一入口（后续可加 route_dispatch）：
+目标统一入口：
 Chat 总控 → MCP route_dispatch → Router Codex CLI（父）
                                   ├─ destination=LOCAL_RUNNER → codex exec / resume → Worker Codex CLI（子）
                                   └─ destination=WEB_CHAT    → Chat Session API → Ego Browser → Web Chat
@@ -21,7 +21,7 @@ Chat 总控 → MCP route_dispatch → Router Codex CLI（父）
 
 1. Chat 总控负责读 GitHub、选择目标、决定串行/并行，以及在失败后是否改道。任务失败后不是本地 CLI 自己“猜”另一个 Chat；总控收到失败收据后再发第二次明确调用。
 2. Router Codex CLI 负责理解总控信封和派发；Worker Codex CLI 只负责本地工作。Worker 不需要直接操作网页 DOM、Cookie 或 ChatGPT 页面；需要网页 Chat 时，由父 CLI / WebCodex 调用 Chat Session API，再由 Ego Browser 发送和读取。
-3. 对外可以是一个 WebCodex MCP Server，但工具能力可以分成“本地任务”和“统一路由”两类。仓库当前已经有 `task_start` / `task_review`；`route_dispatch` 是把两条路径统一起来的后续接口，不应在尚未实现前当成现有能力。
+3. 对外可以是一个 WebCodex MCP Server；relay 的 `route_dispatch` 已把两类目标统一到同一个 durable receipt。`local_runner` 内部复用 `task_start`、`commands_run` 和 `task_review`，不会另造 Runner 或绕过项目权限。
 
 长任务不要让一次 MCP/HTTP 调用挂着一小时。`send` 返回 `202 + operation_id`，本地任务返回 `task_id`；总控之后用 `operation` / `read` 或 `task_review` 查询，最终只接受 `completed`、`failed`、`unknown` 和对应的 durable receipt。
 
@@ -58,7 +58,7 @@ GitHub Issue / PR / 评论
 
 总控 Chat 负责读取 GitHub 台账和运行状态，决定下一步的目标、优先级、串行/并行方式与验收边界。它必须把目标写成 `[to:ALIAS]`（或结构化 `destination`），并保留 Issue/PR、版本和验收依据；不能用一句“已完成”替代 operation 或 Runner 收据。
 
-Router Codex CLI 不是第二个项目总控，也不读取 GitHub。它只接受总控已经生成的派发信封，校验目标属于当前 Project 和 Ego TaskSpace。统一接口实现后，它才会按目标启动 Worker Codex CLI 或调用 WebCodex relay/provider；当前网页目标可以由 relay 执行，本地目标仍通过独立 `task_start` MCP 任务链执行，二者都等待 operation/task receipt 并回报：
+Router Codex CLI 不是第二个项目总控，也不读取 GitHub。它只接受总控已经生成的派发信封，校验目标属于当前 Project 和 Ego TaskSpace，再按目标启动 Worker Codex CLI 或调用 WebCodex relay/provider；二者都等待 operation/task receipt 并回报：
 
 ```json
 {
@@ -91,4 +91,4 @@ HZ OS 的唯一协调台账是 `luxiaolei/huazhuo-blueprint#19`，运行证据�
 
 `wc_chat_*` 是 durable session；Ego Browser Page 只是临时绑定。每个 Project 绑定一个既有 TaskSpace，但一个 TaskSpace 的页面数有限，不能把所有历史 Chat 永久保持打开。生产实现应允许 Router/Provider 按需绑定空闲 Page，完成 operation 后释放 Page；归档的测试 Chat 不得继续出现在 route registry。这样可以保留完整 session 资产，同时避免页面预算和 rate limit 把路由系统锁死。
 
-当前 WebCodex relay 已完成“总控显式目标 → 指定 Web Chat → 回执”执行面，并支持结构化路由的程序化解析与受限格式修复。`local_runner` 的统一 `route_dispatch` 执行器仍待实现；本地 Worker 任务的目标配置是 `gpt-6-astra`、`thinking=medium`，GitHub 驱动的规划仍在网页端总控 Chat 内完成。
+当前 WebCodex relay 已完成“总控显式目标 → 指定 Web Chat 或本地 Runner → 回执”执行面，并支持结构化路由的程序化解析与受限格式修复。Worker Codex CLI 的目标配置是 `gpt-6-astra`、`thinking=medium`，GitHub 驱动的规划仍在网页端总控 Chat 内完成。

@@ -8,7 +8,7 @@ WebCodex 的统一 Chat runtime 现在可以接管原来由人工或 heartbeat �
 
 当前 relay 是执行面，不是 GitHub 规划器。它只处理总控消息中的显式 `[to:ALIAS]` 或 profile 已登记的别名，按固定 alias → `wc_chat_*` 映射调用目标 Chat，等待 operation 完成，再把 `[from:ALIAS]` 回贴总控。每个 profile 一个 worker，并在该 Project 绑定的 Ego TaskSpace 中串行发送、限速和落 checkpoint。它不会自行轮询 GitHub、判断哪个工作包已完成、在 Chat 与本地 MCP 之间选路，也不会自动决定哪些任务并行或串行。
 
-结构化 `destination.kind=web_chat` 已纳入同一执行面；`destination.kind=local_runner` 当前会明确记录为 `rejected`，直到统一 `route_dispatch` worker 发布。需要本地 Codex CLI 时，先使用 ChatGPT Work → WebCodex MCP → Runner 的独立任务链，不要把被拒绝的 relay 事件当作已执行。
+结构化 `destination.kind=web_chat` 和 `destination.kind=local_runner` 已纳入同一执行面。网页目标走 Chat Session API；本地目标先调用项目绑定的 `task_start`，再以固定的 `gpt-6-astra`、`thinking=medium` 配置提交 Codex CLI 到 `commands_run`，最后用 `task_review` 等待 durable execution。`destination.project` 必须与 profile 的 `project` 完全一致，否则 fail-closed；结果或失败原因再由 relay 回传总控。
 
 “总控读 Issue 后自动选 Chat、Session 或本地工具”的规划发生在网页端总控 Chat：它读取 GitHub，决定目标、串行/并行和验收，再生成显式 `[to:ALIAS]` 或结构化 `destination`。本地 Thread Agent 是轻量适配器，只校验这个目标、原文转发并等待 operation/task receipt；它不读取 GitHub、不生成 RouteDecision、不改变总控决定。当前实现提供 durable Chat relay 和独立的 ChatGPT Work → WebCodex MCP → Runner 路径；未产生真实 operation、工具结果和 Issue/PR 回写前，不应声称任务已推进。
 
@@ -57,6 +57,21 @@ WEBCODEX_TOKEN="..." \
 请核对本轮数据质量并返回完整证据。
 ```
 
+需要交给本地 Codex CLI 时，总控也可以返回结构化信封：
+
+```json
+{
+  "version": 1,
+  "destination": { "kind": "local_runner", "project": "agent:local:quantcompany" },
+  "prompt": "检查本轮数据质量并修复失败项。",
+  "mode": "serial",
+  "acceptance": ["返回检查结果", "保留失败证据"]
+}
+```
+
+其中 `destination.project` 必须与 profile 的 `project` 完全相同；profile 初始化会把
+这个绑定保留到运行时配置中。Relay 不替总控选择项目，也不会把目标改投到其他 Project。
+
 为兼容 HZ OS 旧总控的口头路由，profile 也可以为 alias 登记固定中文名称，worker 会识别“转发给‘收敛技术 PR15’”或 `forward to PR15`。没有显式标记或登记名称的消息会进入 `unrouted`，不会猜测目标。
 
 worker 把整段原文发送给目标，等待 WebCodex operation 进入 `completed`，再把 `[from:QC02]` 加到回执前并发送回总控。若目标返回 `Thinking failed`，只在同一目标 Chat 发送一次 `continue`；仍不明确就保留 `unknown`。自动回复失败会进入 `reply_unknown`，不会声称已送达。
@@ -86,4 +101,4 @@ node --check scripts/webcodex-relay-init.mjs
 
 - **网页 Chat relay：通过。** 在隔离的 WebCodex Server、Ego Browser Provider 和 QuantCompany Project 上，结构化 `web_chat` 路由被程序化解析，发送到指定目标 Chat；目标返回后，relay 将 `[from:ALIAS]` 回传总控。`operation` 完成、总控 `read` 可见完整消息链，发送间隔按 30 秒测试配置执行，未出现新的 429。
 - **Chat/MCP → 本地 Runner → Codex CLI：通过。** `task_start`、`files_list`、`commands/run` 成功在隔离 Project 中启动本地 `codex exec` 只读任务，进程以退出码 0 完成。该仓库没有可识别的 validation recipe，因此没有伪造 `task_finish` 成功；任务已清理取消，且没有修改工作树。
-- **统一 `local_runner` relay：尚未实现。** 当前 relay 对这类路由 fail-closed；这不是网页 relay 或独立 MCP 本地任务链的失败。
+- **统一 `local_runner` relay：通过。** 结构化路由会校验 profile Project，创建 Runner task，提交 `codex exec`，轮询 `task_review`，并把 Worker stdout 或明确失败状态回传总控；跨 Project 路由会 fail-closed。

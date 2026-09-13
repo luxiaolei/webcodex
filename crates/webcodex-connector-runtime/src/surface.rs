@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use webcodex_tool_contracts::ToolSpec;
 
 pub const CAPABILITY_NAMES: &[&str] = &[
+    "route_dispatch",
     "task_start",
     "task_list",
     "task_resume",
@@ -26,6 +27,36 @@ pub const CAPABILITY_NAMES: &[&str] = &[
 
 pub fn capability_specs() -> Vec<ToolSpec> {
     vec![
+        spec(
+            "route_dispatch",
+            "Route one controller-decided local_runner envelope into this project. WebCodex starts or continues the project task, submits a bounded GPT-6 Astra Codex CLI worker with medium reasoning, and returns the durable execution receipt for task_review polling. It never chooses a different project or a different destination.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "destination": {
+                        "type": "object",
+                        "properties": {
+                            "kind": { "const": "local_runner" },
+                            "project": { "type": "string", "minLength": 1, "maxLength": 512 }
+                        },
+                        "required": ["kind", "project"],
+                        "additionalProperties": false
+                    },
+                    "prompt": { "type": "string", "minLength": 1, "maxLength": 4000 },
+                    "mode": { "type": "string", "enum": ["serial", "parallel"], "default": "serial" },
+                    "acceptance": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 16,
+                        "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+                    }
+                },
+                "required": ["destination", "prompt", "acceptance"],
+                "additionalProperties": false
+            }),
+            false,
+            true,
+        ),
         spec(
             "task_start",
             "Start or continue this chat window's work in the configured project. A follow-up goal is appended to the existing active task after selective Git, worktree, manifest, and repository-rule refresh; switching away and back restores that project's task. normal uses a managed isolated writable worktree; read_only analyzes the target workspace without writes or command execution.",

@@ -76,6 +76,31 @@ pub(super) struct TaskStartInput {
     pub(super) target_path: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RouteDispatchInput {
+    pub(super) destination: RouteDispatchDestination,
+    pub(super) prompt: String,
+    #[serde(default)]
+    pub(super) mode: RouteDispatchMode,
+    pub(super) acceptance: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RouteDispatchDestination {
+    pub(super) kind: String,
+    pub(super) project: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum RouteDispatchMode {
+    #[default]
+    Serial,
+    Parallel,
+}
+
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum ConnectorTaskMode {

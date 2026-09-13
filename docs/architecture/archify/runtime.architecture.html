@@ -5162,12 +5162,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
         <!-- Connection paths (before components for correct z-order) -->
         <path data-edge-from="caller" data-edge-to="chat_api" data-edge-label="规划 / 创建或发送" data-edge-key="0" data-edge-id="caller-chat" data-composition-points="190,315;225,315;225,315;260,315" d="M 190 315 L 225 315 L 225 315 L 260 315" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="caller" data-edge-to="local_mcp" data-edge-label="当前：MCP task_start / task_review" data-edge-key="1" data-edge-id="caller-mcp" data-composition-points="115,347;115,443.5;355,443.5;355,540" d="M 115 347 L 115 435.5 Q 115 443.5 123 443.5 L 347 443.5 Q 355 443.5 355 451.5 L 355 540" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="caller" data-edge-to="local_mcp" data-edge-label="MCP route_dispatch / review" data-edge-key="1" data-edge-id="caller-mcp" data-composition-points="115,347;115,443.5;355,443.5;355,540" d="M 115 347 L 115 435.5 Q 115 443.5 123 443.5 L 347 443.5 Q 355 443.5 355 451.5 L 355 540" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         <path data-edge-from="chat_api" data-edge-to="store" data-edge-label="持久化 session / operation" data-edge-key="2" data-edge-id="chat-store" data-composition-points="355,280;355,220;355,220;355,160" d="M 355 280 L 355 220 L 355 220 L 355 160" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="local_mcp" data-edge-to="runner" data-edge-label="当前 Runner 任务；目标由父 CLI 启动子 CLI" data-edge-key="3" data-edge-id="mcp-runner" data-composition-points="450,575;505,575;505,575;560,575" d="M 450 575 L 505 575 L 505 575 L 560 575" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="local_mcp" data-edge-to="runner" data-edge-label="route_dispatch → task_start → commands_run" data-edge-key="3" data-edge-id="mcp-runner" data-composition-points="450,575;505,575;505,575;560,575" d="M 450 575 L 505 575 L 505 575 L 560 575" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="thread_agent" data-edge-to="provider" data-edge-label="父 CLI → WebCodex → Ego Browser" data-edge-key="4" data-edge-id="chat-provider" data-composition-points="670,410;670,380;670,380;670,350" d="M 670 410 L 670 380 L 670 380 L 670 350" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="chat_api" data-edge-to="thread_agent" data-edge-label="MCP route → Router Codex CLI（父）" data-edge-key="5" data-edge-id="chat-thread-agent" data-composition-points="355,350;355,380;670,380;670,410" d="M 355 350 L 355 372 Q 355 380 363 380 L 662 380 Q 670 380 670 388 L 670 410" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="thread_agent" data-edge-to="runner" data-edge-label="spawn / resume Worker Codex CLI（子）" data-edge-key="6" data-edge-id="thread-runner" data-composition-points="670,480;670,510;650,510;650,540" d="M 670 480 L 670 502 Q 670 510 662 510 L 658 510 Q 650 510 650 518 L 650 540" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="thread_agent" data-edge-to="runner" data-edge-label="local_runner → Codex CLI Worker（子）" data-edge-key="6" data-edge-id="thread-runner" data-composition-points="670,480;670,510;650,510;650,540" d="M 670 480 L 670 502 Q 670 510 662 510 L 658 510 Q 650 510 650 518 L 650 540" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="provider" data-edge-to="taskspace" data-edge-label="按 Project 选择唯一 Space" data-edge-key="7" data-edge-id="provider-taskspace" data-composition-points="780,315;815,315;815,315;850,315" d="M 780 315 L 815 315 L 815 315 L 850 315" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="taskspace" data-edge-to="web_project" data-edge-label="首次 send 在指定 Project 创建 Chat" data-edge-key="8" data-edge-id="taskspace-project" data-composition-points="940,350;940,410" d="M 940 350 L 940 410" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="runner" data-edge-to="local_tools" data-edge-label="子 CLI 读写本地 Workspace" data-edge-key="9" data-edge-id="runner-tools" data-composition-points="740,575;795,575;795,575;850,575" d="M 740 575 L 795 575 L 795 575 L 850 575" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
@@ -5200,15 +5200,15 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="355" y="342" class="t-backend" font-size="7" text-anchor="middle">网页桥接入口</text>
         </g>
 
-        <g id="node-local_mcp" data-node-id="local_mcp" data-node-label="WebCodex MCP" tabindex="0" role="button" aria-label="聚焦WebCodex MCP，/mcp · task_start / task_review, 本地机器 / WebCodex" aria-pressed="false" data-node-kind="backend" data-node-sublabel="/mcp · task_start / task_review" data-node-tag="本地工具入口" data-node-context="本地机器 / WebCodex">
-          <title>WebCodex MCP · /mcp · task_start / task_review · 本地机器 / WebCodex · 本地工具入口</title>
+        <g id="node-local_mcp" data-node-id="local_mcp" data-node-label="WebCodex MCP" tabindex="0" role="button" aria-label="聚焦WebCodex MCP，/mcp · route_dispatch / review, 本地机器 / WebCodex" aria-pressed="false" data-node-kind="backend" data-node-sublabel="/mcp · route_dispatch / review" data-node-tag="本地工具入口" data-node-context="本地机器 / WebCodex">
+          <title>WebCodex MCP · /mcp · route_dispatch / review · 本地机器 / WebCodex · 本地工具入口</title>
           <rect x="260" y="540" width="190" height="70" rx="6" class="c-mask"/>
           <rect x="260" y="540" width="190" height="70" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(266 546) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="355" y="573" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">WebCodex MCP</text>
-        <text data-detail="context" x="355" y="589" class="t-muted" font-size="9" text-anchor="middle">/mcp · task_start / task_review</text>
+        <text data-detail="context" x="355" y="589" class="t-muted" font-size="9" text-anchor="middle">/mcp · route_dispatch / review</text>
         <text data-detail="fine" x="355" y="602" class="t-backend" font-size="7" text-anchor="middle">本地工具入口</text>
         </g>
 
@@ -5315,17 +5315,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <rect x="129.2" y="269" width="91.6" height="14" rx="3" class="c-mask"/>
           <text x="175" y="279" class="t-backend" font-size="8" text-anchor="middle">规划 / 创建或发送</text>
         </g>
-        <g data-detail="context" data-edge-from="caller" data-edge-to="local_mcp" data-edge-label="当前：MCP task_start / task_review" data-edge-key="1" data-edge-id="caller-mcp">
-          <rect x="148.4" y="389.5" width="173.2" height="14" rx="3" class="c-mask"/>
-          <text x="235" y="399.5" class="t-messagebus" font-size="8" text-anchor="middle">当前：MCP task_start / task_review</text>
+        <g data-detail="context" data-edge-from="caller" data-edge-to="local_mcp" data-edge-label="MCP route_dispatch / review" data-edge-key="1" data-edge-id="caller-mcp">
+          <rect x="165.2" y="389.5" width="139.6" height="14" rx="3" class="c-mask"/>
+          <text x="235" y="399.5" class="t-messagebus" font-size="8" text-anchor="middle">MCP route_dispatch / review</text>
         </g>
         <g data-detail="context" data-edge-from="chat_api" data-edge-to="store" data-edge-label="持久化 session / operation" data-edge-key="2" data-edge-id="chat-store">
           <rect x="192.6" y="200" width="134.8" height="14" rx="3" class="c-mask"/>
           <text x="260" y="210" class="t-backend" font-size="8" text-anchor="middle">持久化 session / operation</text>
         </g>
-        <g data-detail="context" data-edge-from="local_mcp" data-edge-to="runner" data-edge-label="当前 Runner 任务；目标由父 CLI 启动子 CLI" data-edge-key="3" data-edge-id="mcp-runner">
-          <rect x="401.6" y="615" width="206.79999999999998" height="14" rx="3" class="c-mask"/>
-          <text x="505" y="625" class="t-backend" font-size="8" text-anchor="middle">当前 Runner 任务；目标由父 CLI 启动子 CLI</text>
+        <g data-detail="context" data-edge-from="local_mcp" data-edge-to="runner" data-edge-label="route_dispatch → task_start → commands_run" data-edge-key="3" data-edge-id="mcp-runner">
+          <rect x="399.2" y="615" width="211.6" height="14" rx="3" class="c-mask"/>
+          <text x="505" y="625" class="t-backend" font-size="8" text-anchor="middle">route_dispatch → task_start → commands_run</text>
         </g>
         <g data-detail="context" data-edge-from="thread_agent" data-edge-to="provider" data-edge-label="父 CLI → WebCodex → Ego Browser" data-edge-key="4" data-edge-id="chat-provider">
           <rect x="590.6" y="360" width="158.79999999999998" height="14" rx="3" class="c-mask"/>
@@ -5335,9 +5335,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <rect x="455.9" y="360" width="173.2" height="14" rx="3" class="c-mask"/>
           <text x="542.5" y="370" class="t-backend" font-size="8" text-anchor="middle">MCP route → Router Codex CLI（父）</text>
         </g>
-        <g data-detail="context" data-edge-from="thread_agent" data-edge-to="runner" data-edge-label="spawn / resume Worker Codex CLI（子）" data-edge-key="6" data-edge-id="thread-runner">
+        <g data-detail="context" data-edge-from="thread_agent" data-edge-to="runner" data-edge-label="local_runner → Codex CLI Worker（子）" data-edge-key="6" data-edge-id="thread-runner">
           <rect x="566.2" y="490" width="187.6" height="14" rx="3" class="c-mask"/>
-          <text x="660" y="500" class="t-backend" font-size="8" text-anchor="middle">spawn / resume Worker Codex CLI（子）</text>
+          <text x="660" y="500" class="t-backend" font-size="8" text-anchor="middle">local_runner → Codex CLI Worker（子）</text>
         </g>
         <g data-detail="context" data-edge-from="provider" data-edge-to="taskspace" data-edge-label="按 Project 选择唯一 Space" data-edge-key="7" data-edge-id="provider-taskspace">
           <rect x="750" y="360" width="130" height="14" rx="3" class="c-mask"/>
@@ -5579,7 +5579,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>真正的父子关系</h3>
         </div>
         <ul>
-          <li>&bull; Chat 总控 → MCP → Router Codex CLI（父）；父 CLI → codex exec / resume → Worker Codex CLI（子）。</li>
+          <li>&bull; Chat 总控 → MCP route_dispatch → Router Codex CLI（父）；local_runner → codex exec → Worker Codex CLI（子）。</li>
         </ul>
       </div>
 
@@ -5599,7 +5599,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>持久化和边界</h3>
         </div>
         <ul>
-          <li>&bull; WebCodex 保存 operation、父/子 session_id 和 receipt；失败改道由 Chat 总控决定，子 CLI 不递归派发。</li>
+          <li>&bull; WebCodex 保存 operation、task/run 和 receipt；失败改道由 Chat 总控决定，子 CLI 不递归派发。</li>
         </ul>
       </div>
     </div>

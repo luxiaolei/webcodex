@@ -39,6 +39,7 @@ pub enum ConnectorPermission {
 impl ConnectorPermission {
     pub fn for_capability(capability: &str) -> Self {
         match capability {
+            "route_dispatch" => Self::JobRun,
             "files_read" | "files_search" | "code_navigate" | "code_impact" | "task_review"
             | "task_list" | "task_resume" => Self::ProjectRead,
             "edits_apply" | "task_finish" => Self::ProjectWrite,

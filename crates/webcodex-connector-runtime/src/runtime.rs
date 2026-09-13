@@ -16,8 +16,8 @@ use crate::surface;
 use crate::wire_models::{
     sanitize_value, ChecksRunInput, CodeImpactInput, CodeNavigateInput, CodeNavigateOperation,
     CommandsRunInput, EditsApplyInput, FilesListInput, FilesReadInput, FilesSearchInput,
-    SearchResultMode, TaskCancelInput, TaskFinishInput, TaskListInput, TaskResumeInput,
-    TaskReviewInput, TaskStartInput,
+    RouteDispatchInput, SearchResultMode, TaskCancelInput, TaskFinishInput, TaskListInput,
+    TaskResumeInput, TaskReviewInput, TaskStartInput,
 };
 use crate::workspace::{LocalResultDecision, PreparedWorkspace, WorkspaceManager};
 use crate::{
@@ -26,6 +26,7 @@ use crate::{
     ConnectorToolRequest, ConnectorTransport, ConnectorWindowId,
 };
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex as StdMutex, Weak};
@@ -56,6 +57,10 @@ const MAX_REVIEW_APPLIED_PATHS: usize = 200;
 const COMMAND_APPROVAL_TTL_SECS: i64 = 60 * 60;
 const CONNECTOR_PATCH_PREVIEW_BYTES: usize = 128 * 1024;
 const CONNECTOR_SEARCH_WINDOW: usize = crate::projections::CONNECTOR_SEARCH_WINDOW;
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
 
 fn validation_recipe_id(recipe: ConnectorRecipeId) -> RecipeId {
     match recipe {
@@ -508,6 +513,18 @@ impl ConnectorRuntime {
             None => None,
         };
         let outcome = match capability {
+            "route_dispatch" => {
+                self.route_dispatch(
+                    arguments,
+                    &subject_id,
+                    auth,
+                    transport,
+                    window,
+                    now,
+                    defer_execution_guidance,
+                )
+                .await
+            }
             "task_start" => {
                 self.task_start(arguments, &subject_id, auth, transport, window, now)
                     .await
@@ -583,6 +600,122 @@ impl ConnectorRuntime {
         let lock = Arc::new(tokio::sync::Mutex::new(()));
         locks.insert(task_id.to_string(), Arc::downgrade(&lock));
         lock
+    }
+
+    async fn route_dispatch(
+        &self,
+        arguments: Value,
+        subject_id: &str,
+        auth: &ConnectorCallContext,
+        transport: ConnectorTransport,
+        window: Option<&ConnectorWindowId>,
+        now: i64,
+        defer_execution_guidance: bool,
+    ) -> ConnectorCallOutcome {
+        let input: RouteDispatchInput = match parse_input("route_dispatch", arguments) {
+            Ok(input) => input,
+            Err(outcome) => return outcome,
+        };
+        if input.destination.kind != "local_runner" {
+            return invalid_input(
+                "route_dispatch",
+                "destination.kind must be local_runner on the project connector",
+            );
+        }
+        if input.destination.project != self.context.executor_project
+            && input.destination.project != self.context.project_id
+        {
+            return invalid_input(
+                "route_dispatch",
+                "destination.project is not bound to this connector project",
+            );
+        }
+        let prompt = input.prompt.trim();
+        if prompt.is_empty() || prompt.len() > 4000 {
+            return invalid_input("route_dispatch", "prompt must be 1..=4000 bytes");
+        }
+        if input.acceptance.is_empty() || input.acceptance.len() > 16 {
+            return invalid_input("route_dispatch", "acceptance must contain 1..=16 items");
+        }
+        if input.acceptance.iter().any(|item| {
+            let item = item.trim();
+            item.is_empty() || item.len() > 1000
+        }) {
+            return invalid_input("route_dispatch", "acceptance items must be 1..=1000 bytes");
+        }
+        let goal = format!(
+            "{}\n\nAcceptance criteria:\n{}",
+            prompt,
+            input
+                .acceptance
+                .iter()
+                .map(|item| format!("- {}", item.trim()))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        if goal.len() > 4000 {
+            return invalid_input("route_dispatch", "prompt and acceptance exceed 4000 bytes");
+        }
+        let started = self
+            .task_start(
+                json!({"goal": goal, "mode": "normal"}),
+                subject_id,
+                auth,
+                transport,
+                window,
+                now,
+            )
+            .await;
+        if !started.ok {
+            return started;
+        }
+        let Some(task_id) = started.body.get("task_id").and_then(Value::as_str) else {
+            return ConnectorCallOutcome::error(
+                500,
+                "route_dispatch_task_missing",
+                "task_start returned no task_id",
+                false,
+                true,
+                Some("Inspect the connector task state before retrying."),
+                None,
+                false,
+            );
+        };
+        let mut digest = Sha256::new();
+        digest.update(task_id.as_bytes());
+        digest.update(b"\0");
+        digest.update(goal.as_bytes());
+        let operation_id = format!("route-{:x}", digest.finalize());
+        let command = format!(
+            "codex exec --ephemeral --skip-git-repo-check --sandbox workspace-write --model gpt-6-astra -c model_reasoning_effort=medium --json --cd . {}",
+            shell_quote(&goal)
+        );
+        let mut dispatched = self
+            .commands_run(
+                json!({
+                    "task_id": task_id,
+                    "operation_id": operation_id,
+                    "command": command,
+                    "timeout_secs": 120
+                }),
+                subject_id,
+                auth,
+                transport,
+                now,
+                defer_execution_guidance,
+            )
+            .await;
+        if let Some(data) = dispatched
+            .body
+            .get_mut("data")
+            .and_then(Value::as_object_mut)
+        {
+            data.insert(
+                "route_dispatch".to_string(),
+                json!({"destination": "local_runner", "mode": format!("{:?}", input.mode).to_lowercase()}),
+            );
+        }
+        dispatched
     }
 
     fn context_lock(&self, subject_id: &str, window_key: &str) -> Arc<tokio::sync::Mutex<()>> {

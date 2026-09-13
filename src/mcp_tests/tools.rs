@@ -1458,7 +1458,7 @@ fn project_connector_tools_list_is_exact_capability_registry() {
         .map(|tool| tool["name"].as_str().unwrap())
         .collect::<Vec<_>>();
     assert_eq!(names, crate::connector_runtime::surface::CAPABILITY_NAMES);
-    assert_eq!(tools.len(), 14);
+    assert_eq!(tools.len(), 15);
     assert!(tools.iter().all(|tool| tool["inputSchema"].is_object()));
     assert!(tools.iter().all(|tool| tool["outputSchema"].is_object()));
     assert!(!names.contains(&"runtime_status"));
