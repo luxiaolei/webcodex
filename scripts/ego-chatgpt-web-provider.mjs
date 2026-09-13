@@ -61,6 +61,39 @@ async function currentTurnCount(page) {
   return page.evaluate(() => document.querySelectorAll('[data-turn="assistant"]').length);
 }
 
+async function sessionMessages(page) {
+  return page.evaluate(() => {
+    const messages = [];
+    for (const node of document.querySelectorAll('[data-message-author-role]')) {
+      const role = node.getAttribute('data-message-author-role');
+      if (role !== 'user' && role !== 'assistant') continue;
+      const text = node.textContent?.trim() || '';
+      if (!text) continue;
+      const container = node.closest('[data-message-id]') || node;
+      const messageId = container.getAttribute('data-message-id') || null;
+      messages.push({ message_id: messageId, role, text });
+    }
+    return messages;
+  });
+}
+
+async function observeSession(id) {
+  const sessions = sessionState();
+  const saved = sessions[id];
+  if (!saved?.page_label) throw new Error("Ego Browser page for this Chat session is unavailable");
+  const task = await runtimeTask();
+  const page = task.page(saved.page_label);
+  if (!page) throw new Error("Ego Browser page for this Chat session is unavailable");
+  if (saved.url && (await page.url()) !== saved.url) await page.goto(saved.url);
+  await waitForComposer(page);
+  const messages = await sessionMessages(page);
+  return {
+    session_id: id,
+    messages,
+    cursor: messages.at(-1)?.message_id || null,
+  };
+}
+
 function userText(payload) {
   const input = Array.isArray(payload?.input) ? payload.input : [];
   const last = [...input].reverse().find((item) => item?.role === "user");
@@ -158,6 +191,12 @@ function send(response, status, value) {
   response.end(body);
 }
 
+function sessionIdFromPath(pathname) {
+  const match = pathname.match(/^\/v1\/sessions\/(wc_chat_[A-Za-z0-9]+)\/messages$/);
+  if (!match) throw new Error("invalid Chat session path");
+  return match[1];
+}
+
 async function serve() {
   // ponytail: serialize all browser turns; add per-session locks only if throughput requires it.
   const queue = { tail: Promise.resolve() };
@@ -169,6 +208,17 @@ async function serve() {
     if (request.method === "POST" && request.url === "/shutdown") {
       send(response, 200, { ok: true });
       setTimeout(() => server.close(), 0);
+      return;
+    }
+    if (request.method === "GET") {
+      try {
+        const url = new URL(request.url, "http://127.0.0.1");
+        const id = sessionIdFromPath(url.pathname);
+        const result = await observeSession(id);
+        send(response, 200, result);
+      } catch (error) {
+        send(response, 502, { error: { message: error instanceof Error ? error.message : String(error) } });
+      }
       return;
     }
     if (request.method !== "POST" || request.url !== "/v1/responses") {

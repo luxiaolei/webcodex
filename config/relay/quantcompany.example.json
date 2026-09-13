@@ -1,0 +1,12 @@
+{
+  "profile": "quantcompany",
+  "api_url": "http://127.0.0.1:17840",
+  "provider_url": "http://127.0.0.1:17841",
+  "controller_session": "wc_chat_REPLACE_ME",
+  "targets": {
+    "QC02": "wc_chat_REPLACE_ME",
+    "QC03": "wc_chat_REPLACE_ME",
+    "QC05": "wc_chat_REPLACE_ME"
+  },
+  "poll_ms": 2000
+}

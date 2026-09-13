@@ -1,0 +1,19 @@
+{
+  "profile": "hz-os",
+  "api_url": "http://127.0.0.1:17840",
+  "project": "agent:workstation:REPLACE_WITH_HUAZHUO_PROJECT_ID",
+  "controller": {
+    "title": "HZ OS - WebCodex 总控",
+    "web_project_url": "https://chatgpt.com/g/REPLACE_WITH_HZOS_PROJECT/project"
+  },
+  "targets": {
+    "PR15": { "title": "HZ OS - 收敛技术 PR15", "web_project_url": "https://chatgpt.com/g/REPLACE_WITH_HZOS_PROJECT/project" },
+    "PRODUCT_MAP": { "title": "HZ OS - 设计全业务产品地图", "web_project_url": "https://chatgpt.com/g/REPLACE_WITH_HZOS_PROJECT/project" },
+    "LOCAL_RUNTIME": { "title": "HZ OS - 本地运行与验收", "web_project_url": "https://chatgpt.com/g/REPLACE_WITH_HZOS_PROJECT/project" }
+  },
+  "aliases": {
+    "PR15": ["收敛技术 PR15"],
+    "PRODUCT_MAP": ["设计全业务产品地图"],
+    "LOCAL_RUNTIME": ["本地运行与验收"]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "profile": "quantcompany",
+  "api_url": "http://127.0.0.1:17840",
+  "project": "agent:workstation:REPLACE_WITH_VISIBLE_WEBCODEX_PROJECT_ID",
+  "controller": {
+    "title": "Quant Company - WebCodex 总控",
+    "web_project_url": "https://chatgpt.com/g/REPLACE_WITH_QUANTCOMPANY_PROJECT/project"
+  },
+  "targets": {
+    "QC02": { "title": "Quant Company - QC02", "web_project_url": "https://chatgpt.com/g/REPLACE_WITH_QUANTCOMPANY_PROJECT/project" },
+    "QC03": { "title": "Quant Company - QC03", "web_project_url": "https://chatgpt.com/g/REPLACE_WITH_QUANTCOMPANY_PROJECT/project" },
+    "QC05": { "title": "Quant Company - QC05", "web_project_url": "https://chatgpt.com/g/REPLACE_WITH_QUANTCOMPANY_PROJECT/project" }
+  }
+}
