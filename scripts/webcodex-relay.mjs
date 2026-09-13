@@ -73,7 +73,7 @@ function saveState(path, state) {
 }
 
 function directive(body, targets, aliases = {}) {
-  const explicit = body.match(/\[to:([A-Za-z0-9_.-]+)\]/i);
+  const explicit = body.match(/(?:^|\n)\s*\[to:([A-Za-z0-9_.-]+)\]/i);
   let alias = explicit?.[1] || null;
   if (!alias) {
     const natural = body.match(/(?:转发|发送|发)\s*给\s*[“"'「]?([^\n\]】”"'」]+)[”"'」]?/i)
@@ -216,6 +216,7 @@ async function run(configPath, once = false) {
   const config = loadConfig(configPath);
   const path = statePath(config);
   const lockPath = `${path}.lock`;
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   let lock;
   try { lock = openSync(lockPath, "wx", 0o600); } catch { throw new Error(`relay profile '${config.profile}' is already running`); }
   try {
