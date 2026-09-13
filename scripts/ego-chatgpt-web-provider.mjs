@@ -43,8 +43,10 @@ function rateLimitDelay(streak) {
 }
 
 async function pageHasRateLimit(page) {
-  const text = await page.evaluate(() => document.body?.innerText || "");
-  return isRateLimitedText(text);
+  return page.evaluate(() => {
+    const turns = document.querySelectorAll('[data-turn="assistant"]');
+    return turns.length === 0 && /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快|rate[_ -]?limit/i.test(document.body?.innerText || "");
+  });
 }
 
 async function waitForSendWindow() {
@@ -214,9 +216,9 @@ async function runResponse(payload) {
     const stop = document.querySelector('button[aria-label="Stop answering"]');
     const rateLimited = /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快/i.test(document.body?.innerText || "");
     const placeholder = /^(?:pro\s+thinking|thinking|思考中|正在思考)\s*$/i.test(text);
-    return rateLimited || (turns.length > turnCount && !stop && Boolean(text) && !placeholder);
+    const ready = turns.length > turnCount && !stop && Boolean(text) && !placeholder;
+    return ready || (!ready && turns.length <= turnCount && rateLimited);
   }, before, { timeout: 180_000 });
-  if (await pageHasRateLimit(page)) throw markRateLimited(false);
   const result = await page.evaluate(() => {
     const turns = [...document.querySelectorAll('[data-turn="assistant"]')];
     const turn = turns.at(-1);
@@ -226,6 +228,7 @@ async function runResponse(payload) {
       messageId: message?.getAttribute("data-message-id") || null,
     };
   });
+  if (!result.text && await pageHasRateLimit(page)) throw markRateLimited(false);
   if (!result.text) throw new Error("Ego Browser returned an empty assistant turn");
   const responseId = `ego_${createHash("sha256").update(`${id}\0${result.messageId || result.text}`).digest("hex").slice(0, 32)}`;
   sessions[id] = { page_label: page.label, url: await page.url(), response_id: responseId, web_project_url: webProjectUrl };
