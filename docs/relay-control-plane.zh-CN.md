@@ -8,7 +8,7 @@ WebCodex 的统一 Chat runtime 现在可以接管原来由人工或 heartbeat �
 
 当前 relay 是执行面，不是 GitHub 规划器。它只处理总控消息中的显式 `[to:ALIAS]` 或 profile 已登记的别名，按固定 alias → `wc_chat_*` 映射调用目标 Chat，等待 operation 完成，再把 `[from:ALIAS]` 回贴总控。每个 profile 一个 worker，并在该 Project 绑定的 Ego TaskSpace 中串行发送、限速和落 checkpoint。它不会自行轮询 GitHub、判断哪个工作包已完成、在 Chat 与本地 MCP 之间选路，也不会自动决定哪些任务并行或串行。
 
-如果要实现“总控读 Issue 后自动选 Chat、Session 或本地工具”的自治调度，总控必须拥有可验证的 GitHub 读取能力和 WebCodex MCP 本地工具连接，再由一个带明确并行/串行规则的 coordinator 生成显式路由指令。当前实现已经提供 durable Chat relay 和独立的 ChatGPT Work → WebCodex MCP → Runner 路径，但没有把两者伪装成一个已经存在的自动规划器；未产生真实 operation、工具结果和 Issue/PR 回写前，不应声称任务已推进。
+“总控读 Issue 后自动选 Chat、Session 或本地工具”的规划发生在网页端总控 Chat：它读取 GitHub，决定目标、串行/并行和验收，再生成显式 `[to:ALIAS]` 或结构化 `destination`。本地 Thread Agent 是轻量适配器，只校验这个目标、原文转发并等待 operation/task receipt；它不读取 GitHub、不生成 RouteDecision、不改变总控决定。当前实现提供 durable Chat relay 和独立的 ChatGPT Work → WebCodex MCP → Runner 路径；未产生真实 operation、工具结果和 Issue/PR 回写前，不应声称任务已推进。
 
 ## 边界
 

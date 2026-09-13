@@ -5161,28 +5161,30 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" data-composition-frame-label="ChatGPT 账号 / 网页端" x="822" y="252" width="236" height="248" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
-        <path data-edge-from="caller" data-edge-to="chat_api" data-edge-label="创建 / 发送" data-edge-key="0" data-edge-id="caller-chat" data-composition-points="190,315;225,315;225,315;260,315" d="M 190 315 L 225 315 L 225 315 L 260 315" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="caller" data-edge-to="chat_api" data-edge-label="创建 / 发送总控信封" data-edge-key="0" data-edge-id="caller-chat" data-composition-points="190,315;225,315;225,315;260,315" d="M 190 315 L 225 315 L 225 315 L 260 315" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="caller" data-edge-to="local_mcp" data-edge-label="工具调用" data-edge-key="1" data-edge-id="caller-mcp" data-composition-points="115,347;115,443.5;355,443.5;355,540" d="M 115 347 L 115 435.5 Q 115 443.5 123 443.5 L 347 443.5 Q 355 443.5 355 451.5 L 355 540" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         <path data-edge-from="chat_api" data-edge-to="store" data-edge-label="持久化绑定与状态" data-edge-key="2" data-edge-id="chat-store" data-composition-points="355,280;355,220;355,220;355,160" d="M 355 280 L 355 220 L 355 220 L 355 160" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="local_mcp" data-edge-to="runner" data-edge-label="校验 Project / 启动任务" data-edge-key="3" data-edge-id="mcp-runner" data-composition-points="450,575;505,575;505,575;560,575" d="M 450 575 L 505 575 L 505 575 L 560 575" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="chat_api" data-edge-to="provider" data-edge-label="Responses turn" data-edge-key="4" data-edge-id="chat-provider" data-composition-points="450,315;505,315;505,315;560,315" d="M 450 315 L 505 315 L 505 315 L 560 315" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="provider" data-edge-to="taskspace" data-edge-label="按 project_id 选择唯一 Space" data-edge-key="5" data-edge-id="provider-taskspace" data-composition-points="780,315;815,315;815,315;850,315" d="M 780 315 L 815 315 L 815 315 L 850 315" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="taskspace" data-edge-to="web_project" data-edge-label="首次发送创建原生 Chat" data-edge-key="6" data-edge-id="taskspace-project" data-composition-points="940,350;940,410" d="M 940 350 L 940 410" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="runner" data-edge-to="local_tools" data-edge-label="执行本地资源" data-edge-key="7" data-edge-id="runner-tools" data-composition-points="740,575;795,575;795,575;850,575" d="M 740 575 L 795 575 L 795 575 L 850 575" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="fallback" data-edge-to="provider" data-edge-label="仅显式切换" data-edge-key="8" data-edge-id="fallback-provider" data-composition-points="940,160;940,220;670,220;670,280" d="M 940 160 L 940 212 Q 940 220 932 220 L 678 220 Q 670 220 670 228 L 670 280" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="store" data-edge-to="provider" data-edge-label="恢复 session 元数据" data-edge-key="9" data-edge-id="store-provider" data-composition-points="450,125;470,125;670,125;670,280;670,280" d="M 450 125 L 462 125 Q 470 125 478 125 L 662 125 Q 670 125 670 133 L 670 280 L 670 280" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="thread_agent" data-edge-to="provider" data-edge-label="按显式 alias 调用 Web Chat" data-edge-key="4" data-edge-id="chat-provider" data-composition-points="670,410;670,380;670,380;670,350" d="M 670 410 L 670 380 L 670 380 L 670 350" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="chat_api" data-edge-to="thread_agent" data-edge-label="总控显式 destination + 原文" data-edge-key="5" data-edge-id="chat-thread-agent" data-composition-points="355,350;355,380;670,380;670,410" d="M 355 350 L 355 372 Q 355 380 363 380 L 662 380 Q 670 380 670 388 L 670 410" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="thread_agent" data-edge-to="runner" data-edge-label="按显式 LOCAL_RUNNER 转发" data-edge-key="6" data-edge-id="thread-runner" data-composition-points="670,480;670,510;650,510;650,540" d="M 670 480 L 670 502 Q 670 510 662 510 L 658 510 Q 650 510 650 518 L 650 540" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="provider" data-edge-to="taskspace" data-edge-label="按 project_id 选择唯一 Space" data-edge-key="7" data-edge-id="provider-taskspace" data-composition-points="780,315;815,315;815,315;850,315" d="M 780 315 L 815 315 L 815 315 L 850 315" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="taskspace" data-edge-to="web_project" data-edge-label="首次发送创建原生 Chat" data-edge-key="8" data-edge-id="taskspace-project" data-composition-points="940,350;940,410" d="M 940 350 L 940 410" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="runner" data-edge-to="local_tools" data-edge-label="执行本地资源" data-edge-key="9" data-edge-id="runner-tools" data-composition-points="740,575;795,575;795,575;850,575" d="M 740 575 L 795 575 L 795 575 L 850 575" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="fallback" data-edge-to="provider" data-edge-label="仅显式切换" data-edge-key="10" data-edge-id="fallback-provider" data-composition-points="940,160;940,220;670,220;670,280" d="M 940 160 L 940 212 Q 940 220 932 220 L 678 220 Q 670 220 670 228 L 670 280" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="store" data-edge-to="provider" data-edge-label="恢复 session 元数据" data-edge-key="11" data-edge-id="store-provider" data-composition-points="450,125;470,125;670,125;670,280;670,280" d="M 450 125 L 462 125 Q 470 125 478 125 L 662 125 Q 670 125 670 133 L 670 280 L 670 280" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
 
         <!-- Components -->
-        <g id="node-caller" data-node-id="caller" data-node-label="调用方 / Agent" tabindex="0" role="button" aria-label="聚焦调用方 / Agent，API 或 MCP, 架构组件" aria-pressed="false" data-node-kind="external" data-node-sublabel="API 或 MCP" data-node-context="架构组件">
-          <title>调用方 / Agent · API 或 MCP · 架构组件</title>
+        <g id="node-caller" data-node-id="caller" data-node-label="总控 Chat / Agent" tabindex="0" role="button" aria-label="聚焦总控 Chat / Agent，目标、mode、验收, 架构组件" aria-pressed="false" data-node-kind="external" data-node-sublabel="目标、mode、验收" data-node-context="架构组件">
+          <title>总控 Chat / Agent · 目标、mode、验收 · 架构组件</title>
           <rect x="40" y="283" width="150" height="64" rx="6" class="c-mask"/>
           <rect x="40" y="283" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(46 289) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="115" y="313" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">调用方 / Agent</text>
-        <text data-detail="context" x="115" y="329" class="t-muted" font-size="9" text-anchor="middle">API 或 MCP</text>
+          <text data-node-label="" data-detail-anchor="" x="115" y="313" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">总控 Chat / Agent</text>
+        <text data-detail="context" x="115" y="329" class="t-muted" font-size="9" text-anchor="middle">目标、mode、验收</text>
         </g>
 
         <g id="node-chat_api" data-node-id="chat_api" data-node-label="Chat Session API" tabindex="0" role="button" aria-label="聚焦Chat Session API，POST /api/chat/session, 本地机器 / WebCodex" aria-pressed="false" data-node-kind="backend" data-node-sublabel="POST /api/chat/session" data-node-tag="create · send · read" data-node-context="本地机器 / WebCodex">
@@ -5245,6 +5247,18 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="670" y="342" class="t-backend" font-size="7" text-anchor="middle">shared runtime</text>
         </g>
 
+        <g id="node-thread_agent" data-node-id="thread_agent" data-node-label="本地 Thread Agent" tabindex="0" role="button" aria-label="聚焦本地 Thread Agent，显式目标解析 / 转发 / 回执, 本地机器 / WebCodex" aria-pressed="false" data-node-kind="backend" data-node-sublabel="显式目标解析 / 转发 / 回执" data-node-tag="gpt-6-astra · low" data-node-context="本地机器 / WebCodex">
+          <title>本地 Thread Agent · 显式目标解析 / 转发 / 回执 · 本地机器 / WebCodex · gpt-6-astra · low</title>
+          <rect x="560" y="410" width="220" height="70" rx="6" class="c-mask"/>
+          <rect x="560" y="410" width="220" height="70" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(566 416) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="670" y="443" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">本地 Thread Agent</text>
+        <text data-detail="context" x="670" y="459" class="t-muted" font-size="9" text-anchor="middle">显式目标解析 / 转发 / 回执</text>
+        <text data-detail="fine" x="670" y="472" class="t-backend" font-size="7" text-anchor="middle">gpt-6-astra · low</text>
+        </g>
+
         <g id="node-local_tools" data-node-id="local_tools" data-node-label="本地工具 / Job" tabindex="0" role="button" aria-label="聚焦本地工具 / Job，命令、文件、Git, 本地机器 / WebCodex" aria-pressed="false" data-node-kind="backend" data-node-sublabel="命令、文件、Git" data-node-context="本地机器 / WebCodex">
           <title>本地工具 / Job · 命令、文件、Git · 本地机器 / WebCodex</title>
           <rect x="850" y="540" width="180" height="70" rx="6" class="c-mask"/>
@@ -5295,9 +5309,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
 
         <!-- Connection labels -->
-        <g data-detail="context" data-edge-from="caller" data-edge-to="chat_api" data-edge-label="创建 / 发送" data-edge-key="0" data-edge-id="caller-chat">
-          <rect x="193.6" y="295" width="62.8" height="14" rx="3" class="c-mask"/>
-          <text x="225" y="305" class="t-backend" font-size="8" text-anchor="middle">创建 / 发送</text>
+        <g data-detail="context" data-edge-from="caller" data-edge-to="chat_api" data-edge-label="创建 / 发送总控信封" data-edge-key="0" data-edge-id="caller-chat">
+          <rect x="124.4" y="269" width="101.2" height="14" rx="3" class="c-mask"/>
+          <text x="175" y="279" class="t-backend" font-size="8" text-anchor="middle">创建 / 发送总控信封</text>
         </g>
         <g data-detail="context" data-edge-from="caller" data-edge-to="local_mcp" data-edge-label="工具调用" data-edge-key="1" data-edge-id="caller-mcp">
           <rect x="210.8" y="389.5" width="48.4" height="14" rx="3" class="c-mask"/>
@@ -5311,27 +5325,35 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <rect x="444.8" y="615" width="120.39999999999999" height="14" rx="3" class="c-mask"/>
           <text x="505" y="625" class="t-backend" font-size="8" text-anchor="middle">校验 Project / 启动任务</text>
         </g>
-        <g data-detail="context" data-edge-from="chat_api" data-edge-to="provider" data-edge-label="Responses turn" data-edge-key="4" data-edge-id="chat-provider">
-          <rect x="466.4" y="295" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="505" y="305" class="t-backend" font-size="8" text-anchor="middle">Responses turn</text>
+        <g data-detail="context" data-edge-from="thread_agent" data-edge-to="provider" data-edge-label="按显式 alias 调用 Web Chat" data-edge-key="4" data-edge-id="chat-provider">
+          <rect x="602.6" y="360" width="134.8" height="14" rx="3" class="c-mask"/>
+          <text x="670" y="370" class="t-backend" font-size="8" text-anchor="middle">按显式 alias 调用 Web Chat</text>
         </g>
-        <g data-detail="context" data-edge-from="provider" data-edge-to="taskspace" data-edge-label="按 project_id 选择唯一 Space" data-edge-key="5" data-edge-id="provider-taskspace">
+        <g data-detail="context" data-edge-from="chat_api" data-edge-to="thread_agent" data-edge-label="总控显式 destination + 原文" data-edge-key="5" data-edge-id="chat-thread-agent">
+          <rect x="472.7" y="360" width="139.6" height="14" rx="3" class="c-mask"/>
+          <text x="542.5" y="370" class="t-backend" font-size="8" text-anchor="middle">总控显式 destination + 原文</text>
+        </g>
+        <g data-detail="context" data-edge-from="thread_agent" data-edge-to="runner" data-edge-label="按显式 LOCAL_RUNNER 转发" data-edge-key="6" data-edge-id="thread-runner">
+          <rect x="597.4" y="490" width="125.19999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="660" y="500" class="t-backend" font-size="8" text-anchor="middle">按显式 LOCAL_RUNNER 转发</text>
+        </g>
+        <g data-detail="context" data-edge-from="provider" data-edge-to="taskspace" data-edge-label="按 project_id 选择唯一 Space" data-edge-key="7" data-edge-id="provider-taskspace">
           <rect x="742.8" y="360" width="144.4" height="14" rx="3" class="c-mask"/>
           <text x="815" y="370" class="t-backend" font-size="8" text-anchor="middle">按 project_id 选择唯一 Space</text>
         </g>
-        <g data-detail="context" data-edge-from="taskspace" data-edge-to="web_project" data-edge-label="首次发送创建原生 Chat" data-edge-key="6" data-edge-id="taskspace-project">
+        <g data-detail="context" data-edge-from="taskspace" data-edge-to="web_project" data-edge-label="首次发送创建原生 Chat" data-edge-key="8" data-edge-id="taskspace-project">
           <rect x="884.6" y="375" width="110.8" height="14" rx="3" class="c-mask"/>
           <text x="940" y="385" class="t-backend" font-size="8" text-anchor="middle">首次发送创建原生 Chat</text>
         </g>
-        <g data-detail="context" data-edge-from="runner" data-edge-to="local_tools" data-edge-label="执行本地资源" data-edge-key="7" data-edge-id="runner-tools">
+        <g data-detail="context" data-edge-from="runner" data-edge-to="local_tools" data-edge-label="执行本地资源" data-edge-key="9" data-edge-id="runner-tools">
           <rect x="761.2" y="555" width="67.6" height="14" rx="3" class="c-mask"/>
           <text x="795" y="565" class="t-muted" font-size="8" text-anchor="middle">执行本地资源</text>
         </g>
-        <g data-detail="context" data-edge-from="fallback" data-edge-to="provider" data-edge-label="仅显式切换" data-edge-key="8" data-edge-id="fallback-provider">
+        <g data-detail="context" data-edge-from="fallback" data-edge-to="provider" data-edge-label="仅显式切换" data-edge-key="10" data-edge-id="fallback-provider">
           <rect x="731" y="200" width="58" height="14" rx="3" class="c-mask"/>
           <text x="760" y="210" class="t-messagebus" font-size="8" text-anchor="middle">仅显式切换</text>
         </g>
-        <g data-detail="context" data-edge-from="store" data-edge-to="provider" data-edge-label="恢复 session 元数据" data-edge-key="9" data-edge-id="store-provider">
+        <g data-detail="context" data-edge-from="store" data-edge-to="provider" data-edge-label="恢复 session 元数据" data-edge-key="11" data-edge-id="store-provider">
           <rect x="514.4" y="105" width="101.2" height="14" rx="3" class="c-mask"/>
           <text x="565" y="115" class="t-messagebus" font-size="8" text-anchor="middle">恢复 session 元数据</text>
         </g>
@@ -5577,8 +5599,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>闭环边界</h3>
         </div>
         <ul>
-          <li>&bull; Chat API 负责网页端 Chat，会话创建于 Project 首页</li>
-          <li>&bull; MCP 负责 ChatGPT 到本地工具；不自动接管既有对话</li>
+          <li>&bull; 总控 Chat 读取 GitHub 并决定目标、串并行和验收</li>
+          <li>&bull; Thread Agent 只校验显式目标、转发原文并回传 operation/task 收据</li>
         </ul>
       </div>
     </div>

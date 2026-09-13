@@ -17,8 +17,8 @@
     {
       "id": "caller",
       "type": "external",
-      "label": "调用方 / Agent",
-      "sublabel": "API 或 MCP",
+      "label": "总控 Chat / Agent",
+      "sublabel": "目标、mode、验收",
       "pos": [
         40,
         283
@@ -141,6 +141,21 @@
       ]
     },
     {
+      "id": "thread_agent",
+      "type": "backend",
+      "label": "本地 Thread Agent",
+      "sublabel": "显式目标解析 / 转发 / 回执",
+      "pos": [
+        560,
+        410
+      ],
+      "size": [
+        220,
+        70
+      ],
+      "tag": "gpt-6-astra · low"
+    },
+    {
       "id": "local_tools",
       "type": "backend",
       "label": "本地工具 / Job",
@@ -210,6 +225,7 @@
         "store",
         "runner",
         "provider",
+        "thread_agent",
         "local_tools",
         "fallback"
       ],
@@ -230,9 +246,11 @@
       "id": "caller-chat",
       "from": "caller",
       "to": "chat_api",
-      "label": "创建 / 发送",
+      "label": "创建 / 发送总控信封",
       "variant": "emphasis",
-      "route": "orthogonal-h"
+      "route": "orthogonal-h",
+      "labelDy": -26,
+      "labelDx": -50
     },
     {
       "id": "caller-mcp",
@@ -268,11 +286,34 @@
     },
     {
       "id": "chat-provider",
-      "from": "chat_api",
+      "from": "thread_agent",
       "to": "provider",
-      "label": "Responses turn",
+      "label": "按显式 alias 调用 Web Chat",
       "variant": "emphasis",
-      "route": "orthogonal-h"
+      "route": "orthogonal-v",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "chat-thread-agent",
+      "from": "chat_api",
+      "to": "thread_agent",
+      "label": "总控显式 destination + 原文",
+      "variant": "emphasis",
+      "route": "orthogonal-v",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDx": 30
+    },
+    {
+      "id": "thread-runner",
+      "from": "thread_agent",
+      "to": "runner",
+      "label": "按显式 LOCAL_RUNNER 转发",
+      "variant": "emphasis",
+      "route": "orthogonal-v",
+      "fromSide": "bottom",
+      "toSide": "top"
     },
     {
       "id": "provider-taskspace",
@@ -361,8 +402,8 @@
       "dot": "rose",
       "title": "闭环边界",
       "items": [
-        "Chat API 负责网页端 Chat，会话创建于 Project 首页",
-        "MCP 负责 ChatGPT 到本地工具；不自动接管既有对话"
+        "总控 Chat 读取 GitHub 并决定目标、串并行和验收",
+        "Thread Agent 只校验显式目标、转发原文并回传 operation/task 收据"
       ]
     }
   ]
