@@ -157,8 +157,8 @@
     {
       "id": "taskspace",
       "type": "external",
-      "label": "Ego TaskSpace",
-      "sublabel": "已登录账号",
+      "label": "Ego TaskSpace 映射",
+      "sublabel": "HZ OS → Space 1 · QuantCompany → Space 2",
       "pos": [
         850,
         280
@@ -166,7 +166,8 @@
       "size": [
         180,
         70
-      ]
+      ],
+      "tag": "一个 Project 一个 Space"
     },
     {
       "id": "web_project",
@@ -277,7 +278,7 @@
       "id": "provider-taskspace",
       "from": "provider",
       "to": "taskspace",
-      "label": "复用登录 TaskSpace",
+      "label": "按 project_id 选择唯一 Space",
       "variant": "emphasis",
       "route": "orthogonal-h",
       "labelDy": 65
@@ -352,8 +353,8 @@
       "dot": "emerald",
       "title": "一次配置，多项目复用",
       "items": [
-        "Ego Browser 账号与 TaskSpace 是运行时级配置",
-        "每个会话只选择自己的 Project URL，无需重复登录"
+        "Ego Browser 账号与 Provider 是统一运行时配置",
+        "每个本地 Project 固定绑定一个既有 TaskSpace；HZ OS=1，QuantCompany=2"
       ]
     },
     {

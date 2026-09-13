@@ -20,7 +20,7 @@ https://chatgpt.com/g/g-p-<project-id>-<slug>/project
 
 创建 WebCodex session 时保存这个 URL；第一次 `send` 会打开该 Project 首页并
 提交消息，ChatGPT 随后创建 `/c/<chat-id>` 对话。后续发送复用同一个 Ego
-Browser 页面和 TaskSpace。省略 `web_project_url` 时，Provider 打开
+Browser 页面和该 Project 绑定的 TaskSpace。省略 `web_project_url` 时，Provider 打开
 `https://chatgpt.com/`，创建普通的非 Project Chat。创建 WebCodex session
 本身不会在 ChatGPT 中创建 Chat，也不能事后把任意旧 Chat 认领进来。
 
@@ -76,9 +76,13 @@ scripts/webcodex-chat-runtime.sh setup
 scripts/webcodex-chat-runtime.sh start
 ```
 
-setup 只保存选定的数字 TaskSpace ID（默认在
-`~/.config/webcodex/ego`，也受 `XDG_CONFIG_HOME` 影响），复用现有账号，不复制
-Cookie，也不要求每个项目重复登录。需要固定已有 TaskSpace 时设置：
+setup 保存运行时状态（默认在 `~/.config/webcodex/ego`，也受
+`XDG_CONFIG_HOME` 影响），复用现有账号，不复制 Cookie，也不要求每个项目重复登录。
+每个本地 Project 必须在私有 `~/.config/webcodex/ego/project-spaces.json` 中绑定一个既有
+TaskSpace；需要单一 Space 的兼容部署才设置：
+
+可从 `config/ego/project-spaces.example.json` 开始，把占位符替换为本机准确的 WebCodex
+Project ID，并将结果保存到 `~/.config/webcodex/ego/project-spaces.json`，权限设为 `0600`。
 
 ```bash
 export WEBCODEX_EGO_SPACE_ID=<existing-space-id>
@@ -185,7 +189,7 @@ node "$ARCHIFY" visual-check docs/architecture/archify/runtime.architecture.html
 
 ## 复用边界
 
-- 一个登录账号和一个 Ego TaskSpace 可以服务多个 WebCodex 本地 Project。
+- 一个登录账号和一个 Provider 可以服务多个 WebCodex 本地 Project；每个 Project 固定绑定一个既有 Ego TaskSpace。
 - 每个 session 都必须绑定一个本地 `project`；网页归属用可选的
   `web_project_url` 单独声明。
 - 原生 ChatGPT Project 的可见性、账号权限和网页 UI 由 ChatGPT/Ego 控制；
