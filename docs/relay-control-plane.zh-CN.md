@@ -4,7 +4,7 @@ WebCodex 的统一 Chat runtime 现在可以接管原来由人工或 heartbeat �
 
 ## 总控知道什么，relay 做什么
 
-新建的总控 Chat 在 bootstrap 时知道自己的职责和已登记的目标别名：QuantCompany 是 QC02、QC03、QC05；HZ OS 是 PR15、PRODUCT_MAP、LOCAL_RUNTIME。两套工作的目标源仍是 GitHub：QuantCompany 以 `luxiaolei/quantcompany#7` 及其 #8–#12 工作包为入口，HZ OS 以 `luxiaolei/huazhuo-blueprint#19` 为协调台账，并关联 `luxiaolei/huazhuo-runtime#1/#8`。这些 Issue/PR 记录目标、负责人、精确版本、证据、阻塞和下一接收者；它们不是 relay 自己生成的第二账本。
+新建的总控 Chat 在 bootstrap 时知道自己的职责和已登记的目标别名：QuantCompany 是 QC01–QC05；HZ OS 至少是 PR15、PRODUCT_MAP、LOCAL_RUNTIME 和 INDEPENDENT_REVIEW，并另有本地 Runner 路由。两套工作的目标源仍是 GitHub：QuantCompany 以 `luxiaolei/quantcompany#7` 及其 #8–#12 工作包为入口，HZ OS 以 `luxiaolei/huazhuo-blueprint#19` 为协调台账，并关联 `luxiaolei/huazhuo-runtime#1/#8`。这些 Issue/PR 记录目标、负责人、精确版本、证据、阻塞和下一接收者；它们不是 relay 自己生成的第二账本。
 
 当前 relay 是执行面，不是 GitHub 规划器。它只处理总控消息中的显式 `[to:ALIAS]` 或 profile 已登记的别名，按固定 alias → `wc_chat_*` 映射调用目标 Chat，等待 operation 完成，再把 `[from:ALIAS]` 回贴总控。每个 profile 一个 worker，并在共享 Ego TaskSpace 中串行发送、限速和落 checkpoint。它不会自行轮询 GitHub、判断哪个工作包已完成、在 Chat 与本地 MCP 之间选路，也不会自动决定哪些任务并行或串行。
 
@@ -77,3 +77,5 @@ node --check scripts/webcodex-relay-init.mjs
 ```
 
 真实验收要分别确认：新 Chat 的 Project URL、目标 Chat 的 Project URL、WebCodex operation 状态、目标回执、总控自动回复和 checkpoint。浏览器页面被用户接管时，provider 必须停止并把事件保留为 `unknown`，不能抢回 TaskSpace。
+
+每个项目的完整 session/Runner 清单保存在本机的 0600 catalog 中，而不是 Git：`~/.config/webcodex/config/quantcompany-catalog.json` 和 `~/.config/webcodex/config/hz-os-catalog.json`。`active` 才能派发；`created_unbound` 表示 WebCodex session 已建但还没有在 Ego Page 上完成首次 bootstrap；`blocked` 或 `pending_router_binding` 只能回报缺口，不能自动发送。测试 Chat 归档后必须从 catalog 删除，不能只从浏览器页面关闭。

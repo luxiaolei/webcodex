@@ -37,7 +37,7 @@ npx --yes @yyjeqhc/webcodex share
 
 Use the authenticated `POST /api/chat/session` action when a ChatGPT Web turn needs a durable binding to a local Runner Project. `create` selects an exact caller-visible Project and may include `web_project_url` to place the first native ChatGPT Chat in a specified ChatGPT Project; `send` starts an asynchronous turn through the shared signed-in Ego Browser provider, and `operation` or `read` retrieves its state and retained messages. Run the unified runtime setup once per machine/account; every project then reuses the same provider session. `pending`, `completed`, `failed`, and `unknown` remain separate states; ambiguous provider or network outcomes stay `unknown` and are never blindly retried. Configure `WEBCODEX_CHATGPT_WEB_URL`, `WEBCODEX_CHATGPT_WEB_MODEL`, and the optional `WEBCODEX_CHATGPT_WEB_TOKEN` only when overriding the shared defaults. Set `WEBCODEX_CHATGPT_WEB_PROVIDER=codex-chatgpt-web` only for the explicit legacy adapter fallback. `project` is the local WebCodex binding; `web_project_url` is the optional native ChatGPT Project binding. See [Chat session bridge](docs/chat-session.md), [Unified Chat runtime](docs/unified-chat-runtime.md), and the [agent onboarding guide](docs/AGENT_ONBOARDING.md).
 
-To replace a browser relay control plane, use the profile-based [WebCodex relay guide](docs/relay-control-plane.zh-CN.md). It creates new controller and target sessions under the requested ChatGPT Project, polls the exact Ego Browser sessions, forwards explicit `[to:ALIAS]` messages, waits for durable WebCodex operations, and posts `[from:ALIAS]` replies back to the controller. QuantCompany and HZ OS use the same worker and separate profiles.
+To replace a browser relay control plane, use the profile-based [WebCodex relay guide](docs/relay-control-plane.zh-CN.md). It creates new controller and target sessions under the requested ChatGPT Project, polls the exact Ego Browser sessions, forwards explicit `[to:ALIAS]` messages, waits for durable WebCodex operations, and posts `[from:ALIAS]` replies back to the controller. The [router-agent architecture](docs/router-agent-architecture.zh-CN.md) defines the next layer for Issue-aware routing to Web Chat or a local Runner. QuantCompany and HZ OS use the same worker and separate profiles.
 
 ## Why WebCodex?
 
@@ -93,6 +93,7 @@ Those are follow-up operating concerns, not concepts a first-time user should ha
 - [Chat session bridge](docs/chat-session.md) — durable ChatGPT Web sessions, local Project binding, and asynchronous operation polling
 - [Unified Chat runtime](docs/unified-chat-runtime.md) — one embedded provider, one global profile, and multi-project operation
 - [Agent onboarding and architecture diagrams](docs/AGENT_ONBOARDING.md) — reusable setup, dependency locations, API flow, and Archify diagrams
+- [Router Agent architecture](docs/router-agent-architecture.zh-CN.md) — controller, local router, web sessions, Runner dispatch, receipts, and parallel/serial rules
 - [MCP](docs/MCP.md) — ChatGPT, Claude, authentication choices, and the real Work-surface MCP smoke test
 - [Deployment](docs/DEPLOYMENT.md) — production, self-hosting, and advanced operations
 - [Troubleshooting](docs/TROUBLESHOOTING.md) — connection and runtime problems
