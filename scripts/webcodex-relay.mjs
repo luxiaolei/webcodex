@@ -326,7 +326,7 @@ async function runLocalRunner(config, state, path, routed, event, key, attempt) 
   const maxWaitMs = config.local_runner_max_wait_ms || defaultLocalRunnerWaitMs;
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
-    const execution = current?.data?.execution;
+    const execution = current?.data?.execution || current?.data?.recent_execution;
     const status = execution?.execution_status;
     if (status === "succeeded") return localRunnerOutput(execution) || `local task ${taskId} completed`;
     if (["failed", "cancelled", "interrupted", "unknown"].includes(status)) {
@@ -354,8 +354,9 @@ async function processMessage(config, state, message, path) {
   const existing = state.events[key];
   const retryable = existing && (existing.state === "rate_limited" || existing.state === "reply_rate_limited")
     && Number(existing.retry_at || 0) <= Date.now();
-  if (existing && !retryable) return;
-  if (message.role !== "user") {
+  const resumable = existing && existing.state === "forwarding";
+  if (existing && !retryable && !resumable) return;
+  if (message.role !== "user" && message.role !== "assistant") {
     if (existing) return;
     state.ignored_message_ids.push(key);
     saveState(path, state);

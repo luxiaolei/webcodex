@@ -174,6 +174,18 @@ async function sessionMessages(page) {
       const messageId = container.getAttribute('data-message-id') || null;
       messages.push({ message_id: messageId, role, text });
     }
+    // ChatGPT's current Project markup keeps assistant turns under data-turn
+    // without the older data-message-author-role attribute.
+    for (const node of document.querySelectorAll('[data-turn="assistant"]')) {
+      if (node.querySelector('[data-message-author-role]')) continue;
+      const text = node.textContent?.trim() || '';
+      if (!text) continue;
+      messages.push({
+        message_id: node.getAttribute('data-message-id') || null,
+        role: 'assistant',
+        text,
+      });
+    }
     return messages;
   });
 }
@@ -315,10 +327,11 @@ async function runResponse(payload) {
     const turns = document.querySelectorAll('[data-turn="assistant"]');
     const latest = turns[turns.length - 1];
     const message = latest?.querySelector('[data-message-author-role="assistant"]');
-    const text = message?.textContent?.trim() || "";
+    const text = message?.textContent?.trim() || latest?.textContent?.trim() || "";
     const stop = document.querySelector('button[aria-label="Stop answering"]');
     const rateLimited = /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快/i.test(document.body?.innerText || "");
-    const placeholder = /^(?:pro\s+thinking|thinking|思考中|正在思考)\s*$/i.test(text);
+    const placeholder = /^chatgpt\s+said\s*:\s*(?:(?:pro\s+thinking|thinking|思考中|正在思考)\s*)?$/i.test(text)
+      || /^(?:pro\s+thinking|thinking|思考中|正在思考)\s*$/i.test(text);
     const ready = turns.length > turnCount && !stop && Boolean(text) && !placeholder;
     return ready || (!ready && turns.length <= turnCount && rateLimited && Date.now() >= deadline);
   }, { turnCount: before, rateLimitDeadline }, { timeout: 180_000 });
