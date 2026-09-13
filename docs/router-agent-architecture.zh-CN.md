@@ -2,6 +2,29 @@
 
 这套系统把“决定下一步”和“执行下一步”分开。网页 Chat 总控读取 GitHub Issue/PR 和项目状态，决定目标、优先级、串行/并行方式和验收边界，并把这些决定写进显式派发消息。本地 Thread Agent 只是轻量执行适配器：解析并校验总控给出的目标，原文转发到指定 Chat 或本地 Runner，再回传真实收据。
 
+## 先用白话看调用链
+
+当前不要把“本地 Codex CLI”“Router”“Ego Browser”想成同一个 Agent：
+
+```text
+Chat 总控
+  ├─ 当前本地链：MCP / task_start → WebCodex Runner → 本地工具或 CLI → task_id
+  └─ 当前网页链：Chat Session API / send → operation_id → Ego Browser → 目标 Web Chat
+
+目标统一入口（后续可加 route_dispatch）：
+Chat 总控 → MCP route_dispatch → Router Adapter
+                                  ├─ destination=LOCAL_RUNNER → 本地 Codex CLI
+                                  └─ destination=WEB_CHAT    → Chat Session API → Ego Browser → Web Chat
+```
+
+这里有三个关键结论：
+
+1. Chat 总控负责读 GitHub、选择目标、决定串行/并行，以及在失败后是否改道。任务失败后不是本地 CLI 自己“猜”另一个 Chat；总控收到失败收据后再发第二次明确调用。
+2. 本地 Codex CLI 只负责本地工作。它不需要直接操作网页 DOM、Cookie 或 ChatGPT 页面；需要网页 Chat 时，由 Router / WebCodex 调用 Chat Session API，再由 Ego Browser 发送和读取。
+3. 对外可以是一个 WebCodex MCP Server，但工具能力可以分成“本地任务”和“统一路由”两类。仓库当前已经有 `task_start` / `task_review`；`route_dispatch` 是把两条路径统一起来的后续接口，不应在尚未实现前当成现有能力。
+
+长任务不要让一次 MCP/HTTP 调用挂着一小时。`send` 返回 `202 + operation_id`，本地任务返回 `task_id`；总控之后用 `operation` / `read` 或 `task_review` 查询，最终只接受 `completed`、`failed`、`unknown` 和对应的 durable receipt。
+
 ```text
 GitHub Issue / PR / 评论
           │ 只读事实

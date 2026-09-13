@@ -41,6 +41,23 @@ WebCodex SQLite。第二条是 ChatGPT 调用本地资源：MCP Work 会话启�
 任务，再用 `files_list`、`git_*` 或命令工具读取结构化结果。两条链共用同一
 个 WebCodex Server 和本地项目注册表，但 Provider 配置只需设置一次。
 
+如果要让 Chat 总控统一选择“本地 CLI”或“网页 Chat”，推荐把它理解成一个
+MCP Server 下的两类能力，而不是让本地 CLI 自己拥有浏览器权限：
+
+- `task_start` / `task_review`：现有本地执行链，进入 WebCodex Runner。
+- `route_dispatch`：目标接口；接收总控已经决定好的 `destination`，再交给
+  Router Adapter。`LOCAL_RUNNER` 启动本地 CLI，`WEB_CHAT` 调用
+  `/api/chat/session`，由 Ego Browser 完成网页发送和读取。这个统一工具目前
+  还没有作为现有 MCP 工具发布，文档中的“目标”不能当成已部署功能。
+
+本地 CLI 不直接调用 Eagle/Ego Browser，也不应该碰网页 DOM 或 Cookie。浏览器
+只存在于本地 WebCodex 的 Provider 边界内。失败改道也由 Chat 总控根据失败
+receipt 决定，而不是 Router 自动猜测下一个目标。
+
+长任务使用 `operation_id` 或 `task_id` 查询：不要让一个 MCP 工具调用一直占用
+连接几十分钟。总控可以继续处理其他状态，之后用 `operation` / `read` 或
+`task_review` 取回最终结果。
+
 完整图见：
 
 - [运行时架构图](architecture/archify/runtime.architecture.html)
