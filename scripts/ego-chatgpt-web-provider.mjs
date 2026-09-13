@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const injected = globalThis.__WEBCODEX_PROVIDER_CONFIG || {};
+const injectedTask = globalThis.__WEBCODEX_PROVIDER_TASK || null;
 const root = resolve(injected.root || process.env.WEBCODEX_RUNTIME_HOME || `${process.env.HOME}/.config/webcodex`);
 const port = Number(injected.port || process.env.WEBCODEX_CHATGPT_WEB_PORT || 17841);
 const statePath = `${root}/ego/runtime.json`;
@@ -96,6 +97,7 @@ async function setupTask() {
 }
 
 async function runtimeTask() {
+  if (injectedTask) return injectedTask;
   return openTaskSpace(requireSpaceId());
 }
 
