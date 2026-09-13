@@ -21,6 +21,17 @@ function headers(token) {
   return result;
 }
 
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+class BootstrapRateLimitError extends Error {
+  constructor(message, retryAfterMs, safeToRetry) {
+    super(message);
+    this.name = "BootstrapRateLimitError";
+    this.retryAfterMs = retryAfterMs;
+    this.safeToRetry = safeToRetry;
+  }
+}
+
 async function api(apiUrl, token, payload) {
   const response = await fetch(`${apiUrl}/api/chat/session`, {
     method: "POST",
@@ -28,7 +39,16 @@ async function api(apiUrl, token, payload) {
     body: JSON.stringify(payload),
   });
   const body = await response.json();
-  if (!response.ok) throw new Error(`${response.status}: ${body?.message || body?.error_kind || response.statusText}`);
+  if (!response.ok) {
+    if (response.status === 429 || body?.error?.code === "preflight_rate_limited") {
+      throw new BootstrapRateLimitError(
+        `${response.status}: ${body?.error?.message || body?.message || response.statusText}`,
+        Number(body?.error?.retry_after_ms) || Number(response.headers.get("retry-after")) * 1_000 || 30_000,
+        body?.error?.code === "preflight_rate_limited",
+      );
+    }
+    throw new Error(`${response.status}: ${body?.message || body?.error_kind || response.statusText}`);
+  }
   return body;
 }
 
@@ -39,8 +59,14 @@ async function send(apiUrl, token, sessionId, body, key) {
   while (Date.now() < deadline) {
     const operation = await api(apiUrl, token, { action: "operation", operation_id: started.operation_id });
     if (operation.state === "completed") return;
-    if (operation.state === "failed" || operation.state === "unknown") throw new Error(operation.error_message || operation.error_kind || operation.state);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (operation.state === "failed" || operation.state === "unknown") {
+      const detail = `${operation.error_kind || ""} ${operation.error_message || operation.state}`;
+      if (/preflight_rate_limited/i.test(detail)) {
+        throw new BootstrapRateLimitError(detail, Number(operation.retry_after_ms) || 30_000, true);
+      }
+      throw new Error(detail);
+    }
+    await sleep(1000);
   }
   throw new Error("bootstrap Chat operation exceeded 180 seconds");
 }
@@ -54,6 +80,21 @@ async function create(apiUrl, token, project, spec, key) {
     idempotency_key: key,
   });
   return result.session.session_id;
+}
+
+async function createAndBootstrap(apiUrl, token, project, spec, key, bootstrapBody) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const suffix = attempt === 1 ? "" : `:retry:${attempt}`;
+    const sessionId = await create(apiUrl, token, project, spec, `${key}:create${suffix}`);
+    try {
+      await send(apiUrl, token, sessionId, bootstrapBody, `${key}:bootstrap${suffix}`);
+      return sessionId;
+    } catch (error) {
+      if (!(error instanceof BootstrapRateLimitError) || !error.safeToRetry || attempt === 3) throw error;
+      await sleep(Math.max(30_000, error.retryAfterMs));
+    }
+  }
+  throw new Error(`unable to bootstrap ${spec.title}`);
 }
 
 const configIndex = process.argv.indexOf("--config");
@@ -73,13 +114,25 @@ const output = {
   min_send_interval_ms: input.min_send_interval_ms ?? 15000,
   rate_limit_backoff_ms: input.rate_limit_backoff_ms ?? 30000,
   aliases: input.aliases || {},
-  controller_session: await create(apiUrl, token, input.project, input.controller, `${input.profile}:controller:create`),
+  controller_session: await createAndBootstrap(
+    apiUrl,
+    token,
+    input.project,
+    input.controller,
+    `${input.profile}:controller`,
+    input.controller.bootstrap || "你是 WebCodex 项目的总控。需要转发任务时，必须在消息中使用 [to:目标别名] 标记；保留任务原文，等待目标回执后继续推进。",
+  ),
   targets: {},
 };
-await send(apiUrl, token, output.controller_session, input.controller.bootstrap || "你是 WebCodex 项目的总控。需要转发任务时，必须在消息中使用 [to:目标别名] 标记；保留任务原文，等待目标回执后继续推进。", `${input.profile}:controller:bootstrap`);
 for (const [alias, spec] of Object.entries(input.targets)) {
-  output.targets[alias] = await create(apiUrl, token, input.project, spec, `${input.profile}:${alias}:create`);
-  await send(apiUrl, token, output.targets[alias], spec.bootstrap || `你是 ${alias} 目标会话。处理收到的原文，完成后返回可直接回贴总控的结果。`, `${input.profile}:${alias}:bootstrap`);
+  output.targets[alias] = await createAndBootstrap(
+    apiUrl,
+    token,
+    input.project,
+    spec,
+    `${input.profile}:${alias}`,
+    spec.bootstrap || `你是 ${alias} 目标会话。处理收到的原文，完成后返回可直接回贴总控的结果。`,
+  );
 }
 save(path, output);
 process.stdout.write(`${JSON.stringify({ profile: output.profile, controller_session: output.controller_session, targets: output.targets })}\n`);
