@@ -54,7 +54,7 @@ Receipt Store 保存原文、路由决定、目标、尝试次数、结果、Iss
 
 ## 并行与串行
 
-独立 Issue、独立工作区和不重叠写路径可以并行。共享 schema、同一文件、集成、合并、部署和本机验收必须串行，并指定唯一 owner。网页端仍受同一 Ego TaskSpace 的发送间隔和 rate-limit backoff 约束；并行是任务级别的并行，不是浏览器页面无上限并发。
+独立 Issue、独立工作区和不重叠写路径可以并行。共享 schema、同一文件、集成、合并、部署和本机验收必须串行，并指定唯一 owner。每个 Project 固定绑定一个 Ego TaskSpace，发送间隔和 rate-limit backoff 在各 Space 内生效；并行是任务级别的并行，不是浏览器页面无上限并发。
 
 ## 两个项目的路由表
 
@@ -64,6 +64,6 @@ HZ OS 的唯一协调台账是 `luxiaolei/huazhuo-blueprint#19`，运行证据�
 
 ## 页面与 session 生命周期
 
-`wc_chat_*` 是 durable session；Ego Browser Page 只是临时绑定。一个 TaskSpace 的页面数有限，不能把所有历史 Chat 永久保持打开。生产实现应允许 Router/Provider 按需绑定空闲 Page，完成 operation 后释放 Page；归档的测试 Chat 不得继续出现在 route registry。这样可以保留完整 session 资产，同时避免页面预算和 rate limit 把路由系统锁死。
+`wc_chat_*` 是 durable session；Ego Browser Page 只是临时绑定。每个 Project 绑定一个既有 TaskSpace，但一个 TaskSpace 的页面数有限，不能把所有历史 Chat 永久保持打开。生产实现应允许 Router/Provider 按需绑定空闲 Page，完成 operation 后释放 Page；归档的测试 Chat 不得继续出现在 route registry。这样可以保留完整 session 资产，同时避免页面预算和 rate limit 把路由系统锁死。
 
 当前 WebCodex relay 已完成“显式目标 → Web Chat → 回执”执行面；本地 Router Agent 和 GitHub 驱动的动态 RouteDecision 是下一层，需要真实 MCP/Runner 收据后才能宣称完成。

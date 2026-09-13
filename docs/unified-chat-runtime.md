@@ -17,8 +17,23 @@ login. Set `WEBCODEX_EGO_SPACE_ID` to reuse an existing TaskSpace; when it is
 omitted, setup creates a dedicated `WebCodex Runtime` TaskSpace in that same
 Ego profile. Then run `scripts/webcodex-chat-runtime.sh start` to start
 WebCodex and reuse the loopback Ego provider.
-The provider URL, browser TaskSpace, model, and account settings are global
-runtime settings. A project never needs a provider edit or a second login.
+The provider URL, browser account, and model settings are global runtime
+settings. TaskSpace selection is explicit per local Project: one Project maps
+to one existing Ego TaskSpace, while the same provider process can serve all
+of those spaces. Keep the mapping in the private
+`$XDG_CONFIG_HOME/webcodex/ego/project-spaces.json` file:
+
+```json
+{
+  "projects": {
+    "<quantcompany WebCodex project id>": 2,
+    "<hz-os WebCodex project id>": 1
+  }
+}
+```
+
+An unknown Project fails closed when an explicit mapping exists. Space 3 may be
+used for development checks, but it is not a business Project route.
 
 The vendored adapter remains available for hosts without Ego Browser by setting
 `WEBCODEX_CHATGPT_WEB_PROVIDER=codex-chatgpt-web` before `setup` and `start`.
@@ -28,8 +43,8 @@ Each caller selects an exact visible WebCodex Project in
 optional `web_project_url` selects the native ChatGPT Project home used on the
 first browser send. The same runtime can therefore serve multiple local
 projects and multiple durable Chat sessions while preserving project-scoped
-tool permissions; the browser account and TaskSpace remain shared runtime
-state.
+tool permissions; the browser account is shared, but the TaskSpace is selected
+from the Project mapping before every browser operation.
 
 The setup command is intentionally one-time and account-scoped. A native
 ChatGPT Project is selected per session with `web_project_url`; the URL is
