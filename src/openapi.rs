@@ -135,6 +135,7 @@ const GPT_ACTION_OPS: &[&str] = &[
     "listRuntimeJobs",
     "getRuntimeJobTail",
     "callRuntimeTool",
+    "chatSession",
 ];
 
 /// Removed historical endpoints that must never appear in `/openapi.json`.
@@ -310,6 +311,37 @@ fn schemas() -> Value {
                 "compact": {"type": "boolean", "description": "Return compact runtime observability."},
                 "summary_only": {"type": "boolean", "description": "Alias for compact=true."}
             }
+        },
+        "ChatSessionRequest": {
+            "additionalProperties": false,
+            "oneOf": [
+                {
+                    "type": "object", "additionalProperties": false, "required": ["action", "title", "project", "idempotency_key"],
+                    "properties": {
+                        "action": {"const": "create"}, "title": {"type": "string", "maxLength": 200}, "project": {"type": "string", "maxLength": 512}, "model": {"type": "string", "maxLength": 128}, "idempotency_key": {"type": "string", "maxLength": 128}
+                    }
+                },
+                {
+                    "type": "object", "additionalProperties": false, "required": ["action", "session_id", "body", "idempotency_key"],
+                    "properties": {
+                        "action": {"const": "send"}, "session_id": {"type": "string"}, "body": {"type": "string", "maxLength": 32768}, "idempotency_key": {"type": "string", "maxLength": 128}
+                    }
+                },
+                {
+                    "type": "object", "additionalProperties": false, "required": ["action", "session_id"],
+                    "properties": {
+                        "action": {"const": "read"}, "session_id": {"type": "string"}, "after_seq": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 1, "maximum": 100}
+                    }
+                },
+                {
+                    "type": "object", "additionalProperties": false, "required": ["action", "operation_id"],
+                    "properties": {"action": {"const": "operation"}, "operation_id": {"type": "string"}}
+                }
+            ]
+        },
+        "ChatSessionResponse": {
+            "type": "object", "additionalProperties": true,
+            "description": "Chat session summary, retained messages, or operation status. send returns 202 with operation_id; poll with action=operation. unknown means the adapter outcome cannot be safely reconstructed and must be reconciled before another send."
         },
         "ToolsListRequest": {
             "type": "object",

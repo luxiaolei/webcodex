@@ -18,7 +18,7 @@ fn communication_list_limit(limit: Option<usize>) -> usize {
         .min(MAX_COMMUNICATION_LIST_LIMIT)
 }
 
-pub(super) fn communication_principal(
+pub(crate) fn communication_principal(
     auth: Option<&AuthContext>,
 ) -> Result<CommunicationPrincipal, ToolResult> {
     let (kind, subject) = match auth {

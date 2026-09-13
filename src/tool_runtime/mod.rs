@@ -13,6 +13,7 @@ mod coding_agent;
 mod coding_task;
 mod coding_task_tools;
 mod communication;
+pub(crate) use communication::communication_principal;
 mod computer_tools;
 pub(crate) mod context_projection;
 mod continuation_feedback;

@@ -112,6 +112,16 @@ pub(super) const GET_RUNTIME_STATUS: OpenApiOperationSpec = operation(
     None,
 );
 
+pub(super) const CHAT_SESSION: OpenApiOperationSpec = operation(
+    "chatSession",
+    "Create, send to, or read a WebCodex Chat session",
+    "Durable session bridge. Use action=create to bind a new provider session to an exact Runner Project, action=send to start an asynchronous ChatGPT Web turn, action=operation to read its terminal or unknown state, and action=read to retrieve retained messages. Project is a local WebCodex binding; this does not claim native ChatGPT Project membership. An unknown operation is never retried automatically.",
+    "ChatSessionRequest",
+    "ChatSessionResponse",
+    Consequential,
+    None,
+);
+
 pub(super) const LIST_RUNTIME_JOBS: OpenApiOperationSpec = operation(
     "listRuntimeJobs",
     "List runtime jobs",

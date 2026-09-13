@@ -162,6 +162,7 @@ fn openapi_consequential_flags_match_operation_risk() {
         "discardUntrackedFiles",
         "importConversationFilesToProject",
         "callRuntimeTool",
+        "chatSession",
     ];
     for id in readonly {
         assert_eq!(
@@ -174,7 +175,7 @@ fn openapi_consequential_flags_match_operation_risk() {
     for id in consequential {
         assert_eq!(flags.get(id), Some(&true), "{} should be consequential", id);
     }
-    assert_eq!(flags.len(), 16);
+    assert_eq!(flags.len(), 17);
 }
 
 #[test]
@@ -517,7 +518,7 @@ fn openapi_call_runtime_tool_lists_accepted_tool_names() {
         .collect::<Vec<_>>();
     assert!(!operation_ids.contains(&"hover"));
     assert!(!operation_ids.contains(&"workspaceSymbols"));
-    assert_eq!(operation_ids.len(), 16);
+    assert_eq!(operation_ids.len(), 17);
 }
 
 #[test]
@@ -1297,7 +1298,7 @@ fn openapi_tool_call_request_exposes_canonical_closeout_and_visible_runtime_fiel
     );
 
     let count = operation_ids(&spec).len();
-    assert_eq!(count, 16, "GPT Actions operation count must stay 16");
+    assert_eq!(count, 17, "GPT Actions operation count must stay 17");
 }
 
 #[test]
@@ -1362,7 +1363,7 @@ fn openapi_call_runtime_tool_declares_checkpoint_flattened_fields() {
         .values()
         .map(|m| m.as_object().unwrap().len())
         .sum();
-    assert_eq!(count, 16, "operation count must stay 16");
+    assert_eq!(count, 17, "operation count must stay 17");
 }
 
 #[test]
@@ -1444,7 +1445,7 @@ fn openapi_call_runtime_tool_declares_apply_text_edits_flattened_fields() {
         .values()
         .map(|m| m.as_object().unwrap().len())
         .sum();
-    assert_eq!(count, 16, "operation count must stay 16");
+    assert_eq!(count, 17, "operation count must stay 17");
 }
 
 #[test]
@@ -1555,7 +1556,7 @@ fn openapi_artifact_upload_tools_remain_generic_and_under_action_limit() {
         );
     }
     let count = ids.len();
-    assert_eq!(count, 16, "GPT Actions operation count must stay 16");
+    assert_eq!(count, 17, "GPT Actions operation count must stay 17");
     assert!(count <= 30, "GPT Actions operation count must stay <= 30");
 
     let tool_call = &spec["components"]["schemas"]["ToolCallRequest"];
