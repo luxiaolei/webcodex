@@ -1,6 +1,6 @@
 {
   "profile": "hz-os",
-  "api_url": "http://127.0.0.1:17840",
+  "api_url": "http://127.0.0.1:8080",
   "project": "agent:workstation:REPLACE_WITH_HUAZHUO_PROJECT_ID",
   "controller": {
     "title": "HZ OS - WebCodex 总控",

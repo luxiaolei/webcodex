@@ -60,7 +60,7 @@ const configIndex = process.argv.indexOf("--config");
 const path = (configIndex >= 0 ? process.argv[configIndex + 1] : null) || process.env.WEBCODEX_RELAY_CONFIG;
 if (!path) throw new Error("usage: webcodex-relay-init.mjs --config <profile-bootstrap.json>");
 const input = json(path);
-const apiUrl = String(input.api_url || process.env.WEBCODEX_URL || "http://127.0.0.1:17840").replace(/\/$/, "");
+const apiUrl = String(input.api_url || process.env.WEBCODEX_URL || "http://127.0.0.1:8080").replace(/\/$/, "");
 const token = process.env.WEBCODEX_TOKEN || "";
 if (!input.project || !input.controller?.title || !input.controller?.web_project_url) throw new Error("config requires project and controller title/web_project_url");
 if (!input.targets || typeof input.targets !== "object") throw new Error("config requires targets");
