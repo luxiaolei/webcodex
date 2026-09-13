@@ -2,6 +2,14 @@
 
 WebCodex 的统一 Chat runtime 现在可以接管原来由人工或 heartbeat 维护的总控 relay。浏览器只负责 Ego Browser 页面触达，WebCodex 负责项目 profile、路由、幂等、等待、回执和自动回复。每个项目使用同一份代码，只换配置。
 
+## 总控知道什么，relay 做什么
+
+新建的总控 Chat 在 bootstrap 时知道自己的职责和已登记的目标别名：QuantCompany 是 QC02、QC03、QC05；HZ OS 是 PR15、PRODUCT_MAP、LOCAL_RUNTIME。两套工作的目标源仍是 GitHub：QuantCompany 以 `luxiaolei/quantcompany#7` 及其 #8–#12 工作包为入口，HZ OS 以 `luxiaolei/huazhuo-blueprint#19` 为协调台账，并关联 `luxiaolei/huazhuo-runtime#1/#8`。这些 Issue/PR 记录目标、负责人、精确版本、证据、阻塞和下一接收者；它们不是 relay 自己生成的第二账本。
+
+当前 relay 是执行面，不是 GitHub 规划器。它只处理总控消息中的显式 `[to:ALIAS]` 或 profile 已登记的别名，按固定 alias → `wc_chat_*` 映射调用目标 Chat，等待 operation 完成，再把 `[from:ALIAS]` 回贴总控。每个 profile 一个 worker，并在共享 Ego TaskSpace 中串行发送、限速和落 checkpoint。它不会自行轮询 GitHub、判断哪个工作包已完成、在 Chat 与本地 MCP 之间选路，也不会自动决定哪些任务并行或串行。
+
+如果要实现“总控读 Issue 后自动选 Chat、Session 或本地工具”的自治调度，总控必须拥有可验证的 GitHub 读取能力和 WebCodex MCP 本地工具连接，再由一个带明确并行/串行规则的 coordinator 生成显式路由指令。当前实现已经提供 durable Chat relay 和独立的 ChatGPT Work → WebCodex MCP → Runner 路径，但没有把两者伪装成一个已经存在的自动规划器；未产生真实 operation、工具结果和 Issue/PR 回写前，不应声称任务已推进。
+
 ## 边界
 
 旧 Chat 不能事后认领为 WebCodex durable session。每个项目要由 WebCodex 用对应的 ChatGPT Project URL 创建一个新的总控 Chat，再创建目标 Chat；旧总控可以在切换期间保留为只读迁移来源。真正切换完成后，旧 relay heartbeat 应暂停，避免两个控制面同时转发。
