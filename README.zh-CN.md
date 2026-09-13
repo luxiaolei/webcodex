@@ -35,7 +35,7 @@ npx --yes @yyjeqhc/webcodex share
 
 ### Chat 会话桥接
 
-如果 ChatGPT Web 回合需要稳定绑定到本地 Runner Project，可以使用受认证的 `POST /api/chat/session` 接口。`create` 绑定调用方可见的精确 Project，`send` 通过本地 `codex-chatgpt-web` 适配器异步启动回合，`operation` 或 `read` 查询状态并读取持久消息。`pending`、`completed`、`failed`、`unknown` 分开记录；Provider 或网络结果不明确时保留 `unknown`，不会盲目重试。可配置 `WEBCODEX_CHATGPT_WEB_URL`、`WEBCODEX_CHATGPT_WEB_MODEL` 和可选的 `WEBCODEX_CHATGPT_WEB_TOKEN`。这里的 Project 是 WebCodex 本地绑定，不等同于原生 ChatGPT Project 归属；后台自动唤醒取决于适配器和宿主。详见[Chat 会话桥接](docs/chat-session.md)。
+如果 ChatGPT Web 回合需要稳定绑定到本地 Runner Project，可以使用受认证的 `POST /api/chat/session` 接口。`create` 绑定调用方可见的精确 Project，`send` 通过内置的 `codex-chatgpt-web` 适配器异步启动回合，`operation` 或 `read` 查询状态并读取持久消息。每台机器和每个账号只需执行一次统一运行时设置，之后所有项目复用同一个 Provider 配置。`pending`、`completed`、`failed`、`unknown` 分开记录；Provider 或网络结果不明确时保留 `unknown`，不会盲目重试。只有需要覆盖共享默认值时才配置 `WEBCODEX_CHATGPT_WEB_URL`、`WEBCODEX_CHATGPT_WEB_MODEL` 和可选的 `WEBCODEX_CHATGPT_WEB_TOKEN`。这里的 Project 是 WebCodex 本地绑定，不等同于原生 ChatGPT Project 归属；后台自动唤醒取决于适配器和宿主。详见[Chat 会话桥接](docs/chat-session.md)和[统一 Chat 运行时](docs/unified-chat-runtime.md)。
 
 ## 为什么用 WebCodex？
 
@@ -89,7 +89,8 @@ Windows 接入和长期部署见[部署指南](docs/DEPLOYMENT.zh-CN.md)与 [MCP
 - [完整使用指南](docs/PERSONAL_SETUP.zh-CN.md) —— CLI、已有 Server、Linux 与高级普通 Server + Runner 配置
 - [快速试用](docs/QUICK_START.zh-CN.md) —— 用 `share` 临时体验一个仓库
 - [Chat 会话桥接](docs/chat-session.md) —— ChatGPT Web 会话、本地 Project 绑定与异步结果查询
-- [MCP](docs/MCP.zh-CN.md) —— ChatGPT、Claude、认证方式和 MCP 参考
+- [统一 Chat 运行时](docs/unified-chat-runtime.md) —— 内置 Provider、一次性全局配置与多项目复用
+- [MCP](docs/MCP.zh-CN.md) —— ChatGPT、Claude、认证方式和 Work 会话 MCP 闭环验收
 - [部署指南](docs/DEPLOYMENT.zh-CN.md) —— 生产、自托管和高级运维
 - [故障排查](docs/TROUBLESHOOTING.zh-CN.md) —— 连接和运行问题
 - [CLI](docs/CLI.zh-CN.md) —— 命令与凭据参考

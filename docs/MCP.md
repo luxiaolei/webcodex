@@ -39,6 +39,23 @@ apps, and write/modify actions are controlled independently by the ChatGPT plan,
 workspace, and admin settings; those client-side permissions are not widened by
 WebCodex scopes.
 
+### ChatGPT Work-surface smoke test
+
+To verify the real ChatGPT-to-WebCodex MCP path, use a ChatGPT **Work** task
+after the custom app has finished scanning its tools. Select the WebCodex app in
+the composer, then ask it to perform this read-only sequence:
+
+```text
+Call task_start with mode=read_only, then call files_list with the returned
+task_id and limit=5. Do not call another tool or modify files. Report both
+tool names and the returned paths.
+```
+
+The acceptance evidence is a real `task_start` result containing a `wc_task_*`
+id followed by a real `files_list` result containing project-relative paths.
+The regular Chat surface may reject developer MCPs even when the app is
+connected; use Work for this smoke test when that restriction is shown.
+
 ## Claude and other MCP clients
 
 Use the same printed `/mcp` URL and authentication values. In Claude, add a
