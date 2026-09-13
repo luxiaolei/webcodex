@@ -205,13 +205,16 @@ async function runResponse(payload) {
   const before = await currentTurnCount(page);
   markSendStarted();
   await page.fill("loc=css:#prompt-textarea", text);
-  await page.press("loc=css:#prompt-textarea", "Enter");
+  await page.click('loc=css:button[aria-label="Send prompt"]');
   await page.waitForFunction((turnCount) => {
     const turns = document.querySelectorAll('[data-turn="assistant"]');
     const latest = turns[turns.length - 1];
+    const message = latest?.querySelector('[data-message-author-role="assistant"]');
+    const text = message?.textContent?.trim() || "";
     const stop = document.querySelector('button[aria-label="Stop answering"]');
     const rateLimited = /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快/i.test(document.body?.innerText || "");
-    return rateLimited || (turns.length > turnCount && !stop && Boolean(latest?.textContent?.trim()));
+    const placeholder = /^(?:pro\s+thinking|thinking|思考中|正在思考)\s*$/i.test(text);
+    return rateLimited || (turns.length > turnCount && !stop && Boolean(text) && !placeholder);
   }, before, { timeout: 180_000 });
   if (await pageHasRateLimit(page)) throw markRateLimited(false);
   const result = await page.evaluate(() => {
