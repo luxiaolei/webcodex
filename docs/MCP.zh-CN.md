@@ -37,6 +37,20 @@ UI 文案可能随 rollout 变化；URL 与认证以 CLI 输出为准。Develope
 和 write/modify action 是否可用，还分别受 ChatGPT 套餐、workspace 与管理员设置控制；
 WebCodex scope 不会扩大这些客户端侧权限。
 
+### ChatGPT Work 闭环验收
+
+要验证真实的 ChatGPT → WebCodex MCP 调用，在 custom app 扫描完工具后，使用
+ChatGPT 的 **Work** 会话，在输入框选中 WebCodex app，并发送：
+
+```text
+调用 task_start，参数 mode=read_only；再用返回的 task_id 调用 files_list，limit=5。
+不要调用其他工具，也不要修改文件。报告两个工具名和返回的路径。
+```
+
+验收证据必须同时包含真实 `task_start` 返回的 `wc_task_*` id，以及随后
+`files_list` 返回的项目相对路径。若普通 Chat 会话提示不支持 developer MCP，
+这是宿主会话面的限制；改用 Work 会话完成该 smoke test。
+
 ## Claude 与其他 MCP client
 
 使用同一份输出的 `/mcp` URL 与认证值。Claude 中添加 custom connector 并粘贴 MCP URL；

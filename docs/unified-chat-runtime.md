@@ -32,3 +32,11 @@ The setup command is intentionally one-time and account-scoped. It does not
 claim native ChatGPT Project membership or make arbitrary existing ChatGPT
 conversations adoptable. The provider must still report a healthy browser
 session before a ChatGPT turn is considered runnable.
+
+The local-tool hop is the WebCodex MCP endpoint, not a second ChatGPT Web
+provider. A ChatGPT Work task reaches that endpoint through the configured MCP
+app and can run `task_start(mode=read_only)` followed by `files_list` with the
+returned task id. This keeps the two runtime paths reusable: the Ego-backed
+provider handles ChatGPT Web turns started by `/api/chat/session`, while the
+MCP app handles ChatGPT-to-local tools. See the [MCP Work-surface smoke test](MCP.md#chatgpt-work-surface-smoke-test)
+for the end-to-end check.

@@ -90,7 +90,7 @@ Those are follow-up operating concerns, not concepts a first-time user should ha
 - [Quick Trial](docs/QUICK_START.md) — temporarily try one repository with `share`
 - [Chat session bridge](docs/chat-session.md) — durable ChatGPT Web sessions, local Project binding, and asynchronous operation polling
 - [Unified Chat runtime](docs/unified-chat-runtime.md) — one embedded provider, one global profile, and multi-project operation
-- [MCP](docs/MCP.md) — ChatGPT, Claude, authentication choices, and MCP reference
+- [MCP](docs/MCP.md) — ChatGPT, Claude, authentication choices, and the real Work-surface MCP smoke test
 - [Deployment](docs/DEPLOYMENT.md) — production, self-hosting, and advanced operations
 - [Troubleshooting](docs/TROUBLESHOOTING.md) — connection and runtime problems
 - [CLI](docs/CLI.md) — command and credential reference

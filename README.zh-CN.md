@@ -90,7 +90,7 @@ Windows 接入和长期部署见[部署指南](docs/DEPLOYMENT.zh-CN.md)与 [MCP
 - [快速试用](docs/QUICK_START.zh-CN.md) —— 用 `share` 临时体验一个仓库
 - [Chat 会话桥接](docs/chat-session.md) —— ChatGPT Web 会话、本地 Project 绑定与异步结果查询
 - [统一 Chat 运行时](docs/unified-chat-runtime.md) —— 内置 Provider、一次性全局配置与多项目复用
-- [MCP](docs/MCP.zh-CN.md) —— ChatGPT、Claude、认证方式和 MCP 参考
+- [MCP](docs/MCP.zh-CN.md) —— ChatGPT、Claude、认证方式和 Work 会话 MCP 闭环验收
 - [部署指南](docs/DEPLOYMENT.zh-CN.md) —— 生产、自托管和高级运维
 - [故障排查](docs/TROUBLESHOOTING.zh-CN.md) —— 连接和运行问题
 - [CLI](docs/CLI.zh-CN.md) —— 命令与凭据参考
