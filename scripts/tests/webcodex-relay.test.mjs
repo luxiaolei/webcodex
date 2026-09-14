@@ -313,7 +313,7 @@ test("processMessage backs off and releases a runner task when the model is at c
     if (url.endsWith("/api/connector/task/start")) return Response.json({ ok: true, task_id: "wc_task_capacity123" });
     if (url.endsWith("/api/connector/commands/run")) return Response.json({ ok: true, data: { execution: { execution_status: "running" } } });
     if (url.endsWith("/api/connector/task/review")) return Response.json({ ok: true, data: {
-      execution: { execution_status: "failed", output_tail: { stdout: '{"type":"error","message":"Selected model is at capacity. Please try a different model."}', stderr: "" } },
+      execution: { execution_status: "failed", output_tail: { stdout: '{"type":"error","message":"Selected model is at capacity. Please try a different model."}', stderr: "state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back" } },
     } });
     if (url.endsWith("/api/connector/task/cancel")) return Response.json({ ok: true, data: { status: "cancelled" } });
     throw new Error(`unexpected call: ${url}`);
