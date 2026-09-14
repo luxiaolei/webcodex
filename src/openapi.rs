@@ -340,6 +340,10 @@ fn schemas() -> Value {
                 {
                     "type": "object", "additionalProperties": false, "required": ["action", "operation_id", "assistant_body"],
                     "properties": {"action": {"const": "reconcile"}, "operation_id": {"type": "string"}, "response_id": {"type": "string"}, "assistant_body": {"type": "string", "maxLength": 32768, "description": "Assistant text independently read back from the bound provider after an unknown operation."}}
+                },
+                {
+                    "type": "object", "additionalProperties": false, "required": ["action", "operation_id", "reason"],
+                    "properties": {"action": {"const": "resolve_unknown"}, "operation_id": {"type": "string"}, "reason": {"type": "string", "maxLength": 1000, "description": "Auditable reason for releasing an unknown operation as failed without fabricating an assistant response."}}
                 }
             ]
         },

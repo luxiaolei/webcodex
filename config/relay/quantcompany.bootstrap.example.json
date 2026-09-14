@@ -16,6 +16,8 @@
   "poll_ms": 5000,
   "min_send_interval_ms": 15000,
   "rate_limit_backoff_ms": 30000,
+  "controller_unknown_recovery": "manual",
+  "controller_unknown_max_age_ms": 900000,
   "local_runner_model": "gpt-6-astra",
   "local_runner_reasoning_effort": "medium"
 }

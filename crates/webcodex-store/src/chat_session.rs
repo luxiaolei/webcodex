@@ -494,9 +494,22 @@ impl Database {
             ));
         }
         if state == "waiting" || state == "unknown" {
+            let blocking_operation_id: Option<String> = tx
+                .query_row(
+                    "SELECT operation_id FROM wc_chat_session_operations WHERE session_id = ?1 AND state IN ('pending', 'unknown') ORDER BY updated_at_unix_ms DESC LIMIT 1",
+                    params![session_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(store_error)?;
             return Err(CommunicationStoreError::new(
                 "chat_session_busy",
-                "Chat session requires operation reconciliation before another send",
+                format!(
+                    "Chat session requires operation reconciliation before another send{}",
+                    blocking_operation_id
+                        .map(|id| format!(" (operation_id: {id})"))
+                        .unwrap_or_default()
+                ),
             ));
         }
         let seq: i64 = tx
@@ -666,6 +679,57 @@ impl Database {
             updated_at_unix_ms: now,
         })
     }
+
+    pub fn resolve_unknown_chat_send(
+        &self,
+        principal: &CommunicationPrincipal,
+        operation_id: &str,
+        reason: &str,
+    ) -> Result<ChatOperationStatus, CommunicationStoreError> {
+        validate_principal(principal)?;
+        let reason = validate_text(reason, 1000, "reason")?;
+        let now = now_unix_ms();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| invalid("database lock poisoned"))?;
+        let tx = conn.unchecked_transaction().map_err(store_error)?;
+        let existing = tx
+            .query_row(
+                "SELECT operation_id, session_id, state, response_id, assistant_body, error_kind, error_message, created_at_unix_ms, updated_at_unix_ms FROM wc_chat_session_operations WHERE operation_id = ?1 AND owner_principal_digest = ?2",
+                params![operation_id, principal.digest],
+                row_to_operation,
+            )
+            .optional()
+            .map_err(store_error)?
+            .ok_or_else(|| CommunicationStoreError::new("chat_operation_not_found", "Chat operation not found"))?;
+        if existing.state != "unknown" {
+            tx.commit().map_err(store_error)?;
+            return Ok(existing);
+        }
+        tx.execute(
+            "UPDATE wc_chat_session_operations SET state = 'failed', error_kind = 'unknown_resolved', error_message = ?2, updated_at_unix_ms = ?3 WHERE operation_id = ?1",
+            params![operation_id, reason, now],
+        )
+        .map_err(store_error)?;
+        tx.execute(
+            "UPDATE wc_chat_sessions SET state = 'active', updated_at_unix_ms = ?2 WHERE session_id = ?1",
+            params![existing.session_id, now],
+        )
+        .map_err(store_error)?;
+        tx.commit().map_err(store_error)?;
+        Ok(ChatOperationStatus {
+            operation_id: operation_id.to_string(),
+            session_id: existing.session_id,
+            state: "failed".to_string(),
+            response_id: None,
+            assistant_body: None,
+            error_kind: Some("unknown_resolved".to_string()),
+            error_message: Some(reason),
+            created_at_unix_ms: existing.created_at_unix_ms,
+            updated_at_unix_ms: now,
+        })
+    }
 }
 
 fn row_to_summary(row: &rusqlite::Row<'_>, offset: usize) -> rusqlite::Result<ChatSessionSummary> {
@@ -769,6 +833,66 @@ mod tests {
             db.begin_chat_send(&principal, &session_id, "retry", "send-2"),
             Err(error) if error.code() == "chat_session_busy"
         ));
+    }
+
+    #[test]
+    fn resolving_unknown_releases_session_without_fabricating_assistant_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("state.sqlite")).unwrap();
+        let principal = CommunicationPrincipal {
+            kind: "test".into(),
+            digest: "wc_principal_resolve_unknown".into(),
+        };
+        let created = db
+            .create_chat_session(
+                &principal,
+                NewChatSession {
+                    title: "test".into(),
+                    project_id: "runner/project".into(),
+                    web_project_url: None,
+                    provider_url: "http://127.0.0.1:17841".into(),
+                    model: "chatgpt-web/medium".into(),
+                    idempotency_key: "create-resolve-unknown".into(),
+                },
+            )
+            .unwrap();
+        let operation = match db
+            .begin_chat_send(
+                &principal,
+                &created.session.session_id,
+                "compute",
+                "send-resolve-unknown",
+            )
+            .unwrap()
+        {
+            ChatSendStart::Started(value) => value,
+            ChatSendStart::Existing(_) => panic!("first send must start"),
+        };
+        db.fail_chat_send(
+            &principal,
+            &operation.operation_id,
+            "provider_timeout",
+            "outcome uncertain",
+            true,
+        )
+        .unwrap();
+        let resolved = db
+            .resolve_unknown_chat_send(
+                &principal,
+                &operation.operation_id,
+                "provider read-back had no assistant response",
+            )
+            .unwrap();
+        assert_eq!(resolved.state, "failed");
+        assert_eq!(resolved.error_kind.as_deref(), Some("unknown_resolved"));
+        assert!(resolved.assistant_body.is_none());
+        let next = db.begin_chat_send(
+            &principal,
+            &created.session.session_id,
+            "retry",
+            "send-after-resolve",
+        );
+        assert!(matches!(next, Ok(ChatSendStart::Started(_))));
     }
 
     #[test]

@@ -286,6 +286,52 @@ test("processMessage reports an unknown local result to the controller once", as
   assert.equal(calls.filter(({ body }) => body.action === "send" && body.session_id === "wc_chat_controller").length, 1);
 });
 
+test("processMessage resolves a stale controller operation before retrying a failure receipt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-controller-recovery-"));
+  const statePath = join(root, "state.json");
+  const sourceBody = JSON.stringify({
+    version: 1,
+    destination: { kind: "local_runner", project: "agent:test:quantcompany" },
+    prompt: "已超时任务",
+    mode: "serial",
+    acceptance: ["返回结果"],
+  });
+  const state = {
+    version: 1,
+    profile: "quantcompany",
+    ignored_message_ids: [],
+    events: {
+      "controller-recovery-1": {
+        state: "unknown", source_message_id: "controller-recovery-1", source_body: sourceBody,
+        target_kind: "local_runner", target_project: "agent:test:quantcompany", attempts: 1,
+        error: "Error: local runner execution failed: command_timeout",
+        failure_report_state: "blocked", failure_report_retry_at: 0,
+      },
+    },
+  };
+  const config = {
+    api_url: "http://webcodex.test", provider_url: "http://provider.test", profile: "quantcompany",
+    project: "agent:test:quantcompany", controller_session: "wc_chat_controller", targets: {},
+    min_send_interval_ms: 0, controller_unknown_recovery: "resolve_stale", controller_unknown_max_age_ms: 60_000,
+  };
+  const calls = [];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push({ url, body });
+    if (body.action === "send") return Response.json({ error: { code: "chat_session_busy", message: "Chat session requires operation reconciliation before another send (operation_id: wc_chat_op_stale)" } }, { status: 409 });
+    if (body.action === "operation") return Response.json({ state: "unknown", operation_id: "wc_chat_op_stale", updated_at_unix_ms: Date.now() - 120_000 });
+    if (body.action === "resolve_unknown") return Response.json({ state: "failed", error_kind: "unknown_resolved" });
+    throw new Error(`unexpected call: ${url}`);
+  };
+  try {
+    await processMessage(config, state, { message_id: "controller-recovery-1", role: "user", text: sourceBody }, statePath);
+  } finally { globalThis.fetch = oldFetch; }
+  assert.deepEqual(calls.map(({ body }) => body.action), ["send", "operation", "resolve_unknown"]);
+  assert.equal(state.controller_recovery_operation_id, "wc_chat_op_stale");
+  assert.equal(state.events["controller-recovery-1"].failure_report_state, "blocked");
+});
+
 test("processMessage confirms a controller reply after an ambiguous operation", async () => {
   const root = await mkdtemp(join(tmpdir(), "webcodex-relay-reply-reconcile-"));
   const statePath = join(root, "state.json");
