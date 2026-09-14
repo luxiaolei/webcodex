@@ -341,7 +341,7 @@ function unknownFailureBody(routed, key, event, error) {
 }
 
 async function reportUnknownFailure(config, state, path, routed, event, key, error) {
-  if (event.failure_report_state === "reported" || event.failure_report_state === "unknown") return;
+  if (event.failure_report_state === "reported") return;
   const body = unknownFailureBody(routed, key, event, error);
   try {
     await sendSession(config, state, path, config.controller_session, body, `${config.profile}:${key}:failure-report`);
@@ -349,11 +349,16 @@ async function reportUnknownFailure(config, state, path, routed, event, key, err
     delete event.failure_report_retry_at;
     delete event.failure_report_error;
   } catch (reportError) {
-    event.failure_report_state = reportError instanceof RateLimitError && reportError.safeToRetry
-      ? "rate_limited"
-      : "unknown";
+    const controllerBusy = /chat session requires operation reconciliation|chat session busy/i.test(String(reportError));
+    event.failure_report_state = controllerBusy
+      ? "blocked"
+      : reportError instanceof RateLimitError && reportError.safeToRetry
+        ? "rate_limited"
+        : "unknown";
     if (event.failure_report_state === "rate_limited") {
       event.failure_report_retry_at = Date.now() + reportError.retryAfterMs;
+    } else if (event.failure_report_state === "blocked") {
+      event.failure_report_retry_at = Date.now() + 60_000;
     }
     if (reportError instanceof ChatOperationUnknownError) event.failure_report_operation_id = reportError.operationId;
     event.failure_report_error = String(reportError);
@@ -463,7 +468,11 @@ async function processMessage(config, state, message, path) {
     && reusableSlotConflict(existing.error) && Number(existing.retry_at || 0) <= Date.now();
   const failureReportPending = existing && existing.state === "unknown" && !existing.failure_report_state
     && !reusableSlotConflict(existing.error);
-  const failureReportRetryable = existing && existing.state === "unknown" && existing.failure_report_state === "rate_limited"
+  const failureReportPreviouslyBlocked = existing && existing.state === "unknown"
+    && existing.failure_report_state === "unknown"
+    && /chat session requires operation reconciliation|chat session busy/i.test(String(existing.failure_report_error));
+  const failureReportRetryable = existing && existing.state === "unknown"
+    && (["rate_limited", "blocked"].includes(existing.failure_report_state) || failureReportPreviouslyBlocked)
     && Number(existing.failure_report_retry_at || 0) <= Date.now();
   const resumable = existing && existing.state === "forwarding";
   if (existing && !retryable && !slotRetryable && !resumable && !failureReportPending && !failureReportRetryable) return;
