@@ -223,10 +223,10 @@ async function observe(config) {
   return requestJson(`${config.provider_url}/v1/sessions/${config.controller_session}/messages`, { headers: headers(config) });
 }
 
-function matchedAssistant(messages, body) {
+function matchedAssistant(messages, body, userMessageId) {
   const normalize = (text) => String(text || "").replace(/\s+/gu, " ").trim();
   const matches = messages.map((message, index) => ({ message, index }))
-    .filter(({ message }) => message.role === "user" && normalize(message.text || message.body) === normalize(body));
+    .filter(({ message }) => message.role === "user" && (userMessageId ? message.message_id === userMessageId : normalize(message.text || message.body) === normalize(body)));
   if (matches.length !== 1) return null;
   const next = messages[matches[0].index + 1];
   const text = next?.text || next?.body;
@@ -235,7 +235,8 @@ function matchedAssistant(messages, body) {
 
 async function reconcileObservedSend(config, sessionId, operationId, body) {
   const observed = await requestJson(`${config.provider_url}/v1/sessions/${sessionId}/messages`, { headers: headers(config) });
-  const assistantBody = matchedAssistant(observed.messages || [], body);
+  const assistantBody = matchedAssistant(observed.messages || [], body,
+    observed.pending_body === body ? observed.pending_user_message_id : undefined);
   if (!assistantBody || observed.generating === true) return null;
   const result = await requestJson(`${config.api_url}/api/chat/session`, {
     method: "POST", headers: headers(config),
@@ -605,6 +606,7 @@ async function processMessage(config, state, message, path) {
       await sendSession(config, state, path, config.controller_session, reply, `${config.profile}:${key}:reply:${attempt}`);
       event.state = "replied";
       delete event.retry_at;
+      delete event.error;
       event.updated_at = new Date().toISOString();
       saveState(path, state);
     } catch (error) {
@@ -654,7 +656,14 @@ async function processMessage(config, state, message, path) {
 }
 
 async function runOnce(config, state, path) {
+  // A pending callback must survive the source turn scrolling out of the DOM.
+  for (const [key, event] of Object.entries(state.events)) {
+    if (["reply_unknown", "forwarded", "reply_rate_limited"].includes(event.state) && event.source_body) {
+      await processMessage(config, state, { message_id: key, role: "assistant", text: event.source_body }, path);
+    }
+  }
   const observed = await observe(config);
+  if (observed.generating) return state;
   for (const message of observed.messages || []) {
     const key = messageKey(message);
     if (state.ignored_message_ids.includes(key)) continue;

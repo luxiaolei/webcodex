@@ -8,7 +8,7 @@ const root = mkdtempSync(join(tmpdir(), "webcodex-page-pool-"));
 mkdirSync(join(root, "ego"));
 writeFileSync(join(root, "ego", "project-spaces.json"), JSON.stringify({ projects: { qc: 2, hz: 1 } }));
 globalThis.__WEBCODEX_PROVIDER_CONFIG = { mode: "test", root };
-const { pageForSession, spaceIdForSession } = await import("../ego-chatgpt-web-provider.mjs");
+const { pageForSession, spaceIdForSession, completedTurn } = await import("../ego-chatgpt-web-provider.mjs");
 delete globalThis.__WEBCODEX_PROVIDER_CONFIG;
 process.on("exit", () => rmSync(root, { recursive: true, force: true }));
 
@@ -46,4 +46,35 @@ test("Project bindings select their configured Ego TaskSpace", () => {
   assert.equal(spaceIdForSession({}, "qc"), 2);
   assert.equal(spaceIdForSession({}, "hz"), 1);
   assert.throws(() => spaceIdForSession({ space_id: 1 }, "qc"), /does not match/);
+});
+
+test("completion matches the request and final actions without relying on visible turn counts", () => {
+  let stopping = false;
+  let finalActions = false;
+  const node = (role, text) => ({
+    textContent: text,
+    matches: () => false,
+    getAttribute: (name) => name === 'data-message-author-role' ? role : name === 'data-message-id' ? `${role}-id` : null,
+    closest: () => ({ querySelector: () => finalActions, getAttribute: () => 'turn-new' }),
+  });
+  const request = node('user', 'send this');
+  const reply = node('assistant', '{"version":');
+  let nodes = [request, reply];
+  const previous = globalThis.document;
+  globalThis.document = { querySelector: () => stopping, querySelectorAll: () => nodes };
+  try {
+    assert.equal(completedTurn('send this'), null, 'a streaming preview is not complete');
+    finalActions = true;
+    reply.textContent = 'full answer';
+    assert.equal(completedTurn(' send   this ').text, 'full answer');
+    assert.equal(completedTurn('different request'), null);
+    request.textContent = 'json {"task":"done"}';
+    assert.equal(completedTurn({ body: '```json\n{"task":"done"}\n```', userMessageId: 'user-id' }).text, 'full answer');
+    request.textContent = 'send this';
+    stopping = true;
+    assert.equal(completedTurn('send this'), null);
+    stopping = false;
+    nodes = [request, reply, request, reply];
+    assert.equal(completedTurn('send this'), null, 'duplicate bodies are ambiguous');
+  } finally { globalThis.document = previous; }
 });

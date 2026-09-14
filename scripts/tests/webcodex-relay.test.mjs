@@ -4,7 +4,32 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { directive, loadConfig, processMessage } from "../webcodex-relay.mjs";
+import { directive, loadConfig, processMessage, runOnce } from "../webcodex-relay.mjs";
+
+test("persisted callbacks resume without rerunning a target absent from browser history", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'relay-resume-'));
+  const config = { api_url:'http://api.test', provider_url:'http://provider.test', profile:'qc', controller_session:'wc_chat_controller', targets:{ QC01:'wc_chat_target' }, min_send_interval_ms:0 };
+  const state = { events:{ old:{ state:'reply_unknown', source_body:'[to:QC01]\nTask', result_body:'Existing result', attempts:1, error:'old busy' } }, ignored_message_ids:[] };
+  const previous = globalThis.fetch;
+  const sends = [];
+  globalThis.fetch = async (url, options) => {
+    if (url.startsWith(config.provider_url)) return Response.json({messages:[]});
+    const body = JSON.parse(options.body);
+    assert.equal(body.action, 'send');
+    assert.equal(body.session_id, config.controller_session);
+    assert.equal(body.body, '[from:QC01]\nExisting result');
+    sends.push(body.idempotency_key);
+    return Response.json({state:'completed', assistant_body:'Acknowledged'});
+  };
+  try {
+    await runOnce(config, state, join(root,'state.json'));
+    await runOnce(config, state, join(root,'state.json'));
+  } finally { globalThis.fetch = previous; }
+  assert.deepEqual(sends, ['qc:old:reply:1']);
+  assert.equal(state.events.old.state, 'replied');
+  assert.equal(state.events.old.attempts, 1);
+  assert.equal(state.events.old.error, undefined);
+});
 
 test("directive requires an explicit configured target", () => {
   assert.deepEqual(directive("[to:QC02]\n保留原文", { QC02: "wc_chat_target" }), {
