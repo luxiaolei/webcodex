@@ -90,8 +90,6 @@ function loadConfig(path) {
     poll_ms: boundedNumber(config.poll_ms ?? defaultPollMs, defaultPollMs, 1_000, 60_000),
     min_send_interval_ms: boundedNumber(config.min_send_interval_ms ?? defaultMinSendIntervalMs, defaultMinSendIntervalMs, 0, 300_000),
     rate_limit_backoff_ms: boundedNumber(config.rate_limit_backoff_ms ?? defaultRateLimitBackoffMs, defaultRateLimitBackoffMs, 1_000, maxRateLimitBackoffMs),
-    controller_unknown_recovery: config.controller_unknown_recovery === "resolve_stale" ? "resolve_stale" : "manual",
-    controller_unknown_max_age_ms: boundedNumber(config.controller_unknown_max_age_ms ?? 900_000, 900_000, 60_000, 86_400_000),
     local_runner_mode: config.local_runner_mode === "read_only" ? "read_only" : "normal",
     local_runner_sandbox: config.local_runner_sandbox === "read-only" ? "read-only" : "workspace-write",
     local_runner_model: localRunnerModel,
@@ -225,13 +223,25 @@ async function observe(config) {
   return requestJson(`${config.provider_url}/v1/sessions/${config.controller_session}/messages`, { headers: headers(config) });
 }
 
-async function controllerReplyVisible(config, reply) {
-  try {
-    const observed = await observe(config);
-    return (observed.messages || []).some((message) => String(message.text || message.body || "") === reply);
-  } catch {
-    return false;
-  }
+function matchedAssistant(messages, body) {
+  const normalize = (text) => String(text || "").replace(/\s+/gu, " ").trim();
+  const matches = messages.map((message, index) => ({ message, index }))
+    .filter(({ message }) => message.role === "user" && normalize(message.text || message.body) === normalize(body));
+  if (matches.length !== 1) return null;
+  const next = messages[matches[0].index + 1];
+  const text = next?.text || next?.body;
+  return next?.role === "assistant" && text?.trim() && !thinkingFailed(text) ? text : null;
+}
+
+async function reconcileObservedSend(config, sessionId, operationId, body) {
+  const observed = await requestJson(`${config.provider_url}/v1/sessions/${sessionId}/messages`, { headers: headers(config) });
+  const assistantBody = matchedAssistant(observed.messages || [], body);
+  if (!assistantBody || observed.generating === true) return null;
+  const result = await requestJson(`${config.api_url}/api/chat/session`, {
+    method: "POST", headers: headers(config),
+    body: JSON.stringify({ action: "reconcile", operation_id: operationId, assistant_body: assistantBody }),
+  });
+  return result.state === "completed" ? result.assistant_body : null;
 }
 
 async function waitForSendWindow(config, state, path) {
@@ -279,6 +289,8 @@ async function sendSession(config, state, path, sessionId, body, idempotencyKey)
     });
     if (operation.state === "completed") return operation.assistant_body || "";
     if (operation.state === "unknown") {
+      const recovered = await reconcileObservedSend(config, sessionId, operationId, body).catch(() => null);
+      if (recovered) return recovered;
       throw new ChatOperationUnknownError(
         `Chat operation ${operation.state}: ${operation.error_message || operation.error_kind || "no detail"}`,
         operationId,
@@ -360,7 +372,6 @@ function busyOperationId(error) {
 }
 
 async function resolveStaleControllerOperation(config, state, path, error) {
-  if (config.controller_unknown_recovery !== "resolve_stale") return false;
   const operationId = busyOperationId(error);
   if (!operationId) return false;
   const operation = await requestJson(`${config.api_url}/api/chat/session`, {
@@ -368,18 +379,18 @@ async function resolveStaleControllerOperation(config, state, path, error) {
     headers: headers(config),
     body: JSON.stringify({ action: "operation", operation_id: operationId }),
   });
-  if (operation.state !== "unknown") return false;
-  const updatedAt = Number(operation.updated_at_unix_ms || operation.created_at_unix_ms || 0);
-  if (!updatedAt || Date.now() - updatedAt < config.controller_unknown_max_age_ms) return false;
-  await requestJson(`${config.api_url}/api/chat/session`, {
+  if (operation.state !== "unknown" || operation.session_id !== config.controller_session) return false;
+  const detail = await requestJson(`${config.api_url}/api/chat/session`, {
     method: "POST",
     headers: headers(config),
-    body: JSON.stringify({
-      action: "resolve_unknown",
-      operation_id: operationId,
-      reason: `relay stale recovery after independent controller read; operation remained unknown for ${Math.round((Date.now() - updatedAt) / 1000)}s`,
-    }),
+    body: JSON.stringify({ action: "read", session_id: config.controller_session, after_seq: 0, limit: 100 }),
   });
+  if (detail.truncated) return false;
+  const requests = (detail.messages || []).filter((message) => message.role === "user"
+    && message.created_at_unix_ms === operation.created_at_unix_ms);
+  if (requests.length !== 1) return false;
+  const recovered = await reconcileObservedSend(config, config.controller_session, operationId, requests[0].body);
+  if (!recovered) return false;
   state.controller_recovery_operation_id = operationId;
   state.controller_recovery_at = new Date().toISOString();
   saveState(path, state);
@@ -525,7 +536,8 @@ async function processMessage(config, state, message, path) {
   const failureReportRetryable = existing && existing.state === "unknown"
     && (["rate_limited", "blocked", "unknown"].includes(existing.failure_report_state) || failureReportPreviouslyBlocked)
     && Number(existing.failure_report_retry_at || 0) <= Date.now();
-  const resumable = existing && existing.state === "forwarding";
+  const resumable = existing && (existing.state === "forwarding"
+    || (["reply_unknown", "forwarded"].includes(existing.state) && Number(existing.retry_at || 0) <= Date.now()));
   if (existing && !retryable && !slotRetryable && !resumable && !failureReportPending && !failureReportRetryable) return;
   if (message.role !== "user" && message.role !== "assistant") {
     if (existing) return;
@@ -568,10 +580,10 @@ async function processMessage(config, state, message, path) {
   }
   saveState(path, state);
   try {
-    const attempt = Number(event.attempts || 0) + 1;
+    const attempt = resumable ? Math.max(1, Number(event.attempts || 0)) : Number(event.attempts || 0) + 1;
     event.attempts = attempt;
     let result;
-    if (event.state === "reply_rate_limited" && event.result_body) {
+    if (["reply_rate_limited", "reply_unknown", "forwarded"].includes(event.state) && event.result_body) {
       result = event.result_body;
     } else if (routed.kind === "local_runner") {
       result = await runLocalRunner(config, state, path, routed, event, key, attempt);
@@ -598,17 +610,11 @@ async function processMessage(config, state, message, path) {
     } catch (error) {
       if (error instanceof ChatOperationUnknownError) {
         event.reply_operation_id = error.operationId;
-        if (await controllerReplyVisible(config, reply)) {
-          event.state = "replied";
-          event.reply_recovered = true;
-          event.updated_at = new Date().toISOString();
-          saveState(path, state);
-          return;
-        }
       }
       event.state = error instanceof RateLimitError && error.safeToRetry ? "reply_rate_limited" : "reply_unknown";
       event.error = String(error);
       if (event.state === "reply_rate_limited") event.retry_at = Date.now() + error.retryAfterMs;
+      else event.retry_at = Date.now() + 60_000;
       event.updated_at = new Date().toISOString();
       saveState(path, state);
     }
