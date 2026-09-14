@@ -147,6 +147,7 @@ test("processMessage dispatches a local_runner route through Runner and Codex CL
         ok: true,
         task_id: body.task_id,
         data: {
+          changes: { clean: true, changed_paths: [] },
           execution: {
             execution_status: "succeeded",
             capability_outcome: "completed",
@@ -155,6 +156,10 @@ test("processMessage dispatches a local_runner route through Runner and Codex CL
           },
         },
       });
+    }
+    if (url.endsWith("/api/connector/task/cancel")) {
+      assert.equal(body.task_id, "wc_task_local123");
+      return Response.json({ ok: true, task_id: body.task_id, data: { status: "cancelled" } });
     }
     if (url.endsWith("/api/chat/session")) {
       assert.equal(body.action, "send");
@@ -181,10 +186,55 @@ test("processMessage dispatches a local_runner route through Runner and Codex CL
   }
   assert.equal(calls.filter(({ url }) => url.endsWith("/api/connector/task/start")).length, 1);
   assert.equal(calls.filter(({ url }) => url.endsWith("/api/connector/commands/run")).length, 1);
+  assert.equal(calls.filter(({ url }) => url.endsWith("/api/connector/task/cancel")).length, 1);
   assert.equal(state.events["local-1"].target_kind, "local_runner");
   assert.equal(state.events["local-1"].local_task_id, "wc_task_local123");
   assert.equal(state.events["local-1"].state, "replied");
   assert.equal(state.events["local-1"].result_body, "本地 Codex 已完成");
+});
+
+test("processMessage confirms a controller reply after an ambiguous operation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-reply-reconcile-"));
+  const statePath = join(root, "state.json");
+  const state = { version: 1, profile: "quantcompany", ignored_message_ids: [], events: {} };
+  const config = {
+    api_url: "http://webcodex.test",
+    provider_url: "http://provider.test",
+    profile: "quantcompany",
+    controller_session: "wc_chat_controller",
+    targets: { QC02: "wc_chat_qc02" },
+    min_send_interval_ms: 0,
+  };
+  const calls = [];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    if (url.startsWith("http://provider.test/")) {
+      calls.push({ url, body: null });
+      return Response.json({ messages: [{ message_id: "controller-reply", role: "user", text: "[from:QC02]\n目标结果" }] });
+    }
+    const body = JSON.parse(options.body);
+    calls.push({ url, body });
+    if (body.action === "send" && body.session_id === "wc_chat_qc02") {
+      return Response.json({ operation_id: "wc_chat_op_forward" }, { status: 202 });
+    }
+    if (body.action === "operation" && body.operation_id === "wc_chat_op_forward") {
+      return Response.json({ state: "completed", assistant_body: "目标结果" });
+    }
+    if (body.action === "send" && body.session_id === "wc_chat_controller") {
+      return Response.json({ operation_id: "wc_chat_op_reply" }, { status: 202 });
+    }
+    if (body.action === "operation" && body.operation_id === "wc_chat_op_reply") {
+      return Response.json({ state: "unknown", error_kind: "provider_timeout", error_message: "response lost" });
+    }
+    throw new Error(`unexpected call: ${JSON.stringify(body)}`);
+  };
+  try {
+    await processMessage(config, state, { message_id: "reply-reconcile-1", role: "user", text: "[to:QC02]\n执行任务" }, statePath);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+  assert.equal(state.events["reply-reconcile-1"].state, "replied");
+  assert.equal(state.events["reply-reconcile-1"].reply_recovered, true);
 });
 
 test("processMessage repairs malformed structured content once before forwarding", async () => {
