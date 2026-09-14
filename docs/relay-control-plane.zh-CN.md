@@ -48,7 +48,7 @@ WEBCODEX_TOKEN="..." \
   scripts/webcodex-chat-runtime.sh relay
 ```
 
-每个 profile 只能有一个 worker；检查点写入 `~/.config/webcodex/relay/<profile>.json`，文件权限为 0600。事件状态是 `forwarding`、`forwarded`、`replied`、`reply_unknown`、`unknown`、`unrouted` 或 `rejected`。`unknown` 不会盲目重试；需要人工检查后再处理。
+每个 profile 只能有一个 worker；检查点写入 `~/.config/webcodex/relay/<profile>.json`，文件权限为 0600。事件状态是 `forwarding`、`forwarded`、`replied`、`reply_unknown`、`unknown`、`unrouted` 或 `rejected`。`unknown` 不会盲目重试；只有 provider 独立 read-back 证实 assistant 回执后，才可用 Chat Session API 的 `reconcile` action 收口原 operation。
 
 总控消息推荐包含显式目标标记，例如：
 
@@ -74,9 +74,9 @@ WEBCODEX_TOKEN="..." \
 
 为兼容 HZ OS 旧总控的口头路由，profile 也可以为 alias 登记固定中文名称，worker 会识别“转发给‘收敛技术 PR15’”或 `forward to PR15`。没有显式标记或登记名称的消息会进入 `unrouted`，不会猜测目标。
 
-worker 把整段原文发送给目标，等待 WebCodex operation 进入 `completed`，再把 `[from:QC02]` 加到回执前并发送回总控。若目标返回 `Thinking failed`，只在同一目标 Chat 发送一次 `continue`；仍不明确就保留 `unknown`。自动回复失败会进入 `reply_unknown`，不会声称已送达。
+worker 把整段原文发送给目标，等待 WebCodex operation 进入 `completed`，再把 `[from:QC02]` 加到回执前并发送回总控。若目标返回 `Thinking failed`，只在同一目标 Chat 发送一次 `continue`；仍不明确就保留 `unknown`。自动回复失败会进入 `reply_unknown`，不会声称已送达。网络响应丢失但 provider 已独立读到 assistant 内容时，使用 `POST /api/chat/session` 的 `{"action":"reconcile","operation_id":"...","assistant_body":"..."}` 完成 durable 记录；没有独立证据时不得 reconcile 或重放。
 
-网页端请求由 provider 和 relay 两层共同限速：同一 TaskSpace 的发送默认至少间隔 15 秒；看到 ChatGPT 的 “Too many requests” 或 429 时，安全的发送前失败会进入 `rate_limited`，回执阶段会进入 `reply_rate_limited`，按 30 秒、60 秒、120 秒递增等待，最长 5 分钟后再恢复。已经提交到网页端、但结果不明的 turn 不会自动重放，会保留为 `unknown`，避免重复执行本地任务。需要调整时，在运行时 profile 中设置 `min_send_interval_ms` 和 `rate_limit_backoff_ms`；轮询默认是 5 秒。
+网页端请求由 provider 和 relay 两层共同限速：同一 TaskSpace 的发送间隔由 profile 的 `min_send_interval_ms` 控制（QuantCompany 当前为 30 秒；代码默认值为 15 秒）。看到 ChatGPT 的 “Too many requests” 或 429 时，安全的发送前失败会进入 `rate_limited`，回执阶段会进入 `reply_rate_limited`，优先遵循 provider 的 `retry_after`，缺失时使用 `rate_limit_backoff_ms`，单次最长等待 5 分钟后再恢复。已经提交到网页端、但结果不明的 turn 不会自动重放，会保留为 `unknown`，避免重复执行本地任务。轮询默认是 5 秒。
 
 ## 切换旧 relay
 
