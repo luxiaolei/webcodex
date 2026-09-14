@@ -237,6 +237,62 @@ test("processMessage confirms a controller reply after an ambiguous operation", 
   assert.equal(state.events["reply-reconcile-1"].reply_recovered, true);
 });
 
+test("processMessage retries a pre-dispatch writable slot conflict", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-slot-retry-"));
+  const statePath = join(root, "state.json");
+  const state = {
+    version: 1,
+    profile: "quantcompany",
+    ignored_message_ids: [],
+    events: {
+      "slot-retry-1": {
+        state: "unknown",
+        source_message_id: "slot-retry-1",
+        source_body: JSON.stringify({
+          version: 1,
+          destination: { kind: "local_runner", project: "agent:test:quantcompany" },
+          prompt: "槽位恢复后重试",
+          mode: "serial",
+          acceptance: ["返回结果"],
+        }),
+        target_kind: "local_runner",
+        target_alias: "LOCAL_RUNNER",
+        target_project: "agent:test:quantcompany",
+        attempts: 1,
+        error: "Error: 409 reusable writable workspace slot is occupied",
+      },
+    },
+  };
+  const config = {
+    api_url: "http://webcodex.test",
+    provider_url: "http://provider.test",
+    profile: "quantcompany",
+    project: "agent:test:quantcompany",
+    controller_session: "wc_chat_controller",
+    targets: {},
+    min_send_interval_ms: 0,
+    poll_ms: 1_000,
+    local_runner_max_wait_ms: 10_000,
+  };
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    if (url.endsWith("/api/connector/task/start")) return Response.json({ ok: true, task_id: "wc_task_retry123", run_id: "wc_run_retry123" });
+    if (url.endsWith("/api/connector/commands/run")) return Response.json({ ok: true, data: { execution: { execution_status: "running" } } });
+    if (url.endsWith("/api/connector/task/review")) return Response.json({ ok: true, data: { changes: { clean: true }, execution: { execution_status: "succeeded", output_tail: { stdout: "重试成功\n" } } } });
+    if (url.endsWith("/api/connector/task/cancel")) return Response.json({ ok: true, data: { status: "cancelled" } });
+    if (body.action === "send") return Response.json({ state: "completed", assistant_body: "已回传" });
+    throw new Error(`unexpected call: ${url}`);
+  };
+  try {
+    await processMessage(config, state, { message_id: "slot-retry-1", role: "user", text: state.events["slot-retry-1"].source_body }, statePath);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+  assert.equal(state.events["slot-retry-1"].state, "replied");
+  assert.equal(state.events["slot-retry-1"].local_task_id, "wc_task_retry123");
+});
+
 test("processMessage repairs malformed structured content once before forwarding", async () => {
   const root = await mkdtemp(join(tmpdir(), "webcodex-relay-repair-"));
   const statePath = join(root, "state.json");

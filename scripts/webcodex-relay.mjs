@@ -231,6 +231,10 @@ function rateLimitFromOperation(operation, config) {
   return new RateLimitError(text || "Chat operation was rate limited", config.rate_limit_backoff_ms, safeToRetry);
 }
 
+function reusableSlotConflict(error) {
+  return /409.*reusable writable workspace slot is occupied/i.test(String(error));
+}
+
 async function sendSession(config, state, path, sessionId, body, idempotencyKey) {
   await waitForSendWindow(config, state, path);
   const started = await requestJson(`${config.api_url}/api/chat/session`, {
@@ -400,8 +404,10 @@ async function processMessage(config, state, message, path) {
   const existing = state.events[key];
   const retryable = existing && (existing.state === "rate_limited" || existing.state === "reply_rate_limited")
     && Number(existing.retry_at || 0) <= Date.now();
+  const slotRetryable = existing && existing.state === "unknown" && !existing.local_task_id
+    && reusableSlotConflict(existing.error) && Number(existing.retry_at || 0) <= Date.now();
   const resumable = existing && existing.state === "forwarding";
-  if (existing && !retryable && !resumable) return;
+  if (existing && !retryable && !slotRetryable && !resumable) return;
   if (message.role !== "user" && message.role !== "assistant") {
     if (existing) return;
     state.ignored_message_ids.push(key);
@@ -481,6 +487,9 @@ async function processMessage(config, state, message, path) {
     if (error instanceof RateLimitError && error.safeToRetry) {
       event.state = "rate_limited";
       event.retry_at = Date.now() + error.retryAfterMs;
+    } else if (reusableSlotConflict(error)) {
+      event.state = "unknown";
+      event.retry_at = Date.now() + config.rate_limit_backoff_ms;
     } else {
       event.state = "unknown";
     }
