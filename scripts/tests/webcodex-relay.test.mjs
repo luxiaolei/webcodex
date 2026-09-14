@@ -297,6 +297,39 @@ test("processMessage retries a pre-dispatch writable slot conflict", async () =>
   assert.equal(state.events["slot-retry-1"].local_task_id, "wc_task_retry123");
 });
 
+test("processMessage backs off and releases a runner task when the model is at capacity", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-capacity-"));
+  const statePath = join(root, "state.json");
+  const state = { version: 1, profile: "quantcompany", ignored_message_ids: [], events: {} };
+  const config = {
+    api_url: "http://webcodex.test", provider_url: "http://provider.test", profile: "quantcompany",
+    project: "agent:test:quantcompany", controller_session: "wc_chat_controller", targets: {},
+    min_send_interval_ms: 0, poll_ms: 1_000, rate_limit_backoff_ms: 30_000, local_runner_max_wait_ms: 10_000,
+  };
+  const calls = [];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body); calls.push({ url, body });
+    if (url.endsWith("/api/connector/task/start")) return Response.json({ ok: true, task_id: "wc_task_capacity123" });
+    if (url.endsWith("/api/connector/commands/run")) return Response.json({ ok: true, data: { execution: { execution_status: "running" } } });
+    if (url.endsWith("/api/connector/task/review")) return Response.json({ ok: true, data: {
+      execution: { execution_status: "failed", output_tail: { stdout: '{"type":"error","message":"Selected model is at capacity. Please try a different model."}', stderr: "" } },
+    } });
+    if (url.endsWith("/api/connector/task/cancel")) return Response.json({ ok: true, data: { status: "cancelled" } });
+    throw new Error(`unexpected call: ${url}`);
+  };
+  try {
+    await processMessage(config, state, { message_id: "capacity-1", role: "user", text: JSON.stringify({
+      version: 1, destination: { kind: "local_runner", project: "agent:test:quantcompany" }, prompt: "容量失败重试", mode: "serial", acceptance: ["返回结果"],
+    }) }, statePath);
+  } finally { globalThis.fetch = oldFetch; }
+  const event = state.events["capacity-1"];
+  assert.equal(event.state, "rate_limited");
+  assert.equal(event.local_task_id, null);
+  assert.ok(event.retry_at > Date.now() - 1000);
+  assert.equal(calls.filter(({ url }) => url.endsWith("/api/connector/task/cancel")).length, 1);
+});
+
 test("processMessage repairs malformed structured content once before forwarding", async () => {
   const root = await mkdtemp(join(tmpdir(), "webcodex-relay-repair-"));
   const statePath = join(root, "state.json");
