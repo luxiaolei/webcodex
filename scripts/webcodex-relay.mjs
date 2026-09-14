@@ -153,7 +153,16 @@ function messageKey(message) {
 
 function looksStructured(text) {
   const value = String(text || "").trim();
-  return value.startsWith("{") || /^```(?:json)?\s*\n/i.test(value);
+  if (!(value.startsWith("{") || /^```(?:json)?\s*\n/i.test(value))) return false;
+  // Controller acknowledgements/reconciliation reports are JSON too, but are
+  // not route candidates. Avoid invoking the expensive repairer for them.
+  try {
+    const candidate = value.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i)?.[1] || value;
+    const parsed = JSON.parse(candidate);
+    return !!parsed && typeof parsed === "object" && ("version" in parsed || "destination" in parsed);
+  } catch {
+    return true;
+  }
 }
 
 async function routeFromBody(body, config) {

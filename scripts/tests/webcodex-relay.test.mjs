@@ -45,6 +45,19 @@ test("directive requires an explicit configured target", () => {
   assert.throws(() => directive("[to:missing]", { QC02: "wc_chat_target" }), /unknown relay target/);
 });
 
+test("structured controller status is not sent to route repair", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-status-"));
+  const statePath = join(root, "state.json");
+  const state = { version: 1, profile: "quantcompany", ignored_message_ids: [], events: {} };
+  const config = { api_url: "http://api.test", provider_url: "http://provider.test", profile: "quantcompany", controller_session: "wc_chat_controller", targets: {} };
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("fetch must not be called"); };
+  try {
+    await processMessage(config, state, { message_id: "status-1", role: "user", text: JSON.stringify({ status: "blocked", decision: "hold" }) }, statePath);
+  } finally { globalThis.fetch = oldFetch; }
+  assert.equal(state.events["status-1"].state, "unrouted");
+});
+
 test("profile validation keeps project routing explicit", () => {
   const path = join(tmpdir(), `webcodex-relay-${process.pid}.json`);
   return import("node:fs/promises").then(async ({ writeFile, rm }) => {
