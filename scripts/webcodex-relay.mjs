@@ -235,6 +235,10 @@ function reusableSlotConflict(error) {
   return /409.*reusable writable workspace slot is occupied/i.test(String(error));
 }
 
+function runnerCapacityError(error) {
+  return /selected model is at capacity|model capacity|rate limit/i.test(String(error || ""));
+}
+
 async function sendSession(config, state, path, sessionId, body, idempotencyKey) {
   await waitForSendWindow(config, state, path);
   const started = await requestJson(`${config.api_url}/api/chat/session`, {
@@ -380,7 +384,7 @@ async function runLocalRunner(config, state, path, routed, event, key, attempt) 
       return localRunnerOutput(execution) || `local task ${taskId} completed`;
     }
     if (["failed", "cancelled", "interrupted", "unknown"].includes(status)) {
-      const detail = execution?.output_tail?.stderr || execution?.terminal_reason || status;
+      const detail = execution?.output_tail?.stderr || execution?.output_tail?.stdout || execution?.terminal_reason || status;
       throw new Error(`local runner execution ${status}: ${detail}`);
     }
     await sleep(Math.min(15_000, Math.max(1_000, config.poll_ms)));
@@ -493,6 +497,22 @@ async function processMessage(config, state, message, path) {
     if (error instanceof RateLimitError && error.safeToRetry) {
       event.state = "rate_limited";
       event.retry_at = Date.now() + error.retryAfterMs;
+    } else if (routed.kind === "local_runner" && runnerCapacityError(error)) {
+      if (event.local_task_id) {
+        try {
+          await requestJson(`${config.api_url}/api/connector/task/cancel`, {
+            method: "POST",
+            headers: headers(config),
+            body: JSON.stringify({ task_id: event.local_task_id, reason: "retrying after runner model capacity failure" }),
+          });
+        } catch (cleanupError) {
+          event.local_task_cleanup_error = String(cleanupError);
+        }
+      }
+      event.local_task_id = null;
+      event.local_operation_id = null;
+      event.state = "rate_limited";
+      event.retry_at = Date.now() + config.rate_limit_backoff_ms;
     } else if (reusableSlotConflict(error)) {
       event.state = "unknown";
       event.retry_at = Date.now() + config.rate_limit_backoff_ms;
