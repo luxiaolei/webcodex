@@ -14,7 +14,7 @@ import { parseRouteWithFallback, validateModelSettings } from "./webcodex-route.
 const defaultApi = "http://127.0.0.1:8080";
 const defaultProvider = "http://127.0.0.1:17841";
 const maxMessageChars = 32_768;
-const maxWaitMs = 180_000;
+const maxWaitMs = 7_200_000;
 const defaultPollMs = 5_000;
 const defaultMinSendIntervalMs = 15_000;
 const defaultRateLimitBackoffMs = 30_000;
@@ -303,7 +303,7 @@ async function sendSession(config, state, path, sessionId, body, idempotencyKey)
     }
     await sleep(1000);
   }
-  throw new ChatOperationUnknownError("Chat operation wait exceeded 180 seconds; outcome is unknown", operationId);
+  throw new ChatOperationUnknownError("Chat operation wait exceeded two hours; outcome is unknown", operationId);
 }
 
 function shellQuote(value) {
