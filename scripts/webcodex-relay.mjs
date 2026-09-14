@@ -384,7 +384,11 @@ async function runLocalRunner(config, state, path, routed, event, key, attempt) 
       return localRunnerOutput(execution) || `local task ${taskId} completed`;
     }
     if (["failed", "cancelled", "interrupted", "unknown"].includes(status)) {
-      const detail = execution?.output_tail?.stderr || execution?.output_tail?.stdout || execution?.terminal_reason || status;
+      const stderr = String(execution?.output_tail?.stderr || "");
+      const stdout = String(execution?.output_tail?.stdout || "");
+      const detail = /selected model is at capacity|model capacity|rate limit/i.test(stdout)
+        ? stdout
+        : stderr || stdout || execution?.terminal_reason || status;
       throw new Error(`local runner execution ${status}: ${detail}`);
     }
     await sleep(Math.min(15_000, Math.max(1_000, config.poll_ms)));
