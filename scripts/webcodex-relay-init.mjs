@@ -114,6 +114,8 @@ const output = {
   poll_ms: input.poll_ms ?? 5000,
   min_send_interval_ms: input.min_send_interval_ms ?? 15000,
   rate_limit_backoff_ms: input.rate_limit_backoff_ms ?? 30000,
+  local_runner_model: input.local_runner_model ?? "gpt-6-astra",
+  local_runner_reasoning_effort: input.local_runner_reasoning_effort ?? "medium",
   aliases: input.aliases || {},
   controller_session: await createAndBootstrap(
     apiUrl,
@@ -121,7 +123,7 @@ const output = {
     input.project,
     input.controller,
     `${input.profile}:controller`,
-    input.controller.bootstrap || "你是 WebCodex 项目的总控。需要转发任务时，必须在消息中使用 [to:目标别名] 标记；保留任务原文，等待目标回执后继续推进。",
+    input.controller.bootstrap || "你是 WebCodex 项目的总控。读取项目台账后决定目标、串行/并行和验收。网页目标使用 [to:目标别名]；本地任务使用严格 JSON：{version:1,destination:{kind:\"local_runner\",project:\"<bound project>\"},prompt,mode,acceptance,model?,reasoning_effort?}。model 和 reasoning_effort 只用于本地任务，必须从允许的模型与档位中按任务难度选择；省略时使用默认值。保留任务原文，等待目标回执后继续推进。",
   ),
   targets: {},
 };

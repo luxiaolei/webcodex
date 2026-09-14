@@ -6,6 +6,30 @@ const MAX_PROMPT_CHARS = 32_768;
 const MAX_ACCEPTANCE_ITEMS = 32;
 const MAX_REPAIR_OUTPUT_CHARS = 1_000_000;
 const DEFAULT_REPAIR_TIMEOUT_MS = 30_000;
+const MODEL_REASONING_EFFORTS = Object.freeze({
+  "gpt-6-astra": new Set(["low", "medium", "high", "xhigh", "max", "ultra"]),
+  "gpt-5.6-sol": new Set(["low", "medium", "high", "xhigh", "max", "ultra"]),
+  "gpt-5.6-terra": new Set(["low", "medium", "high", "xhigh", "max", "ultra"]),
+  "gpt-5.6-luna": new Set(["low", "medium", "high", "xhigh", "max"]),
+  "gpt-5.5": new Set(["low", "medium", "high", "xhigh"]),
+  "gpt-5.3-codex-spark": new Set(["low", "medium", "high", "xhigh"]),
+});
+
+export function validateModelSettings(model, reasoningEffort) {
+  if (model !== undefined) {
+    if (typeof model !== "string" || !Object.hasOwn(MODEL_REASONING_EFFORTS, model)) {
+      throw new Error(`model is not supported: ${model}`);
+    }
+  }
+  if (reasoningEffort !== undefined) {
+    if (typeof reasoningEffort !== "string") throw new Error("reasoning_effort must be a string");
+    const allowed = model ? MODEL_REASONING_EFFORTS[model] : new Set(Object.values(MODEL_REASONING_EFFORTS).flatMap((values) => [...values]));
+    if (!allowed.has(reasoningEffort)) {
+      throw new Error(`reasoning_effort '${reasoningEffort}' is not supported${model ? ` for model '${model}'` : ""}`);
+    }
+  }
+  return { model, reasoning_effort: reasoningEffort };
+}
 
 function unknownFields(value, allowed, path) {
   for (const key of Object.keys(value)) {
@@ -49,7 +73,7 @@ function validateSource(value) {
 
 export function parseRouteDecision(text) {
   const value = parseJsonCandidate(text);
-  unknownFields(value, new Set(["version", "destination", "prompt", "mode", "acceptance", "source", "reason"]), "");
+  unknownFields(value, new Set(["version", "destination", "prompt", "mode", "acceptance", "source", "reason", "model", "reasoning_effort"]), "");
   if (value.version !== 1) throw new Error("version must be 1");
   if (!value.destination || typeof value.destination !== "object" || Array.isArray(value.destination)) {
     throw new Error("destination must be an object");
@@ -76,7 +100,13 @@ export function parseRouteDecision(text) {
   }
   if (value.acceptance.length > MAX_ACCEPTANCE_ITEMS) throw new Error("acceptance has too many items");
   const acceptance = value.acceptance.map((item, index) => nonEmptyString(item, `acceptance[${index}]`, 1_000));
+  validateModelSettings(value.model, value.reasoning_effort);
+  if (kind === "web_chat" && (value.model !== undefined || value.reasoning_effort !== undefined)) {
+    throw new Error("model and reasoning_effort are only valid for local_runner");
+  }
   const route = { version: 1, destination, prompt, mode: value.mode, acceptance };
+  if (value.model !== undefined) route.model = value.model;
+  if (value.reasoning_effort !== undefined) route.reasoning_effort = value.reasoning_effort;
   const source = validateSource(value.source);
   if (source) route.source = source;
   if (value.reason !== undefined) route.reason = nonEmptyString(value.reason, "reason", 2_000);
@@ -90,6 +120,7 @@ function repairPrompt(original) {
     "Do not change the intended destination or prompt. Do not execute tools.",
     "The JSON schema is: version=1; destination.kind is web_chat with alias OR local_runner with project;",
     "prompt is non-empty; mode is serial or parallel; acceptance is a non-empty string array.",
+    "For local_runner only, optional model is one of gpt-6-astra, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5, gpt-5.3-codex-spark; optional reasoning_effort is low, medium, high, xhigh, max, or ultra, subject to the selected model.",
     "Return JSON only, with no markdown and no explanation.",
     "<controller_output>",
     String(original).slice(0, MAX_PROMPT_CHARS),

@@ -4,7 +4,7 @@
 
 ## 先用白话看调用链
 
-这里确实有一层父子 Codex CLI：Router Codex CLI 是父会话，Worker Codex CLI 是子会话。Router 父会话使用 `gpt-6-astra`、`thinking=low` 理解派发信封；Worker 子会话使用 `gpt-6-astra`、`thinking=medium` 执行本地任务：
+这里确实有一层父子 Codex CLI：Router Codex CLI 是父会话，Worker Codex CLI 是子会话。Router 父会话使用 `gpt-6-astra`、`thinking=low` 理解派发信封；Worker 子会话默认使用 `gpt-6-astra`、`thinking=medium`，也可由总控按任务难度在路由信封中指定白名单模型和 reasoning：
 
 ```text
 Chat 总控
@@ -91,4 +91,4 @@ HZ OS 的唯一协调台账是 `luxiaolei/huazhuo-blueprint#19`，运行证据�
 
 `wc_chat_*` 是 durable session；Ego Browser Page 只是临时绑定。每个 Project 绑定一个既有 TaskSpace，但一个 TaskSpace 的页面数有限，不能把所有历史 Chat 永久保持打开。生产实现应允许 Router/Provider 按需绑定空闲 Page，完成 operation 后释放 Page；归档的测试 Chat 不得继续出现在 route registry。这样可以保留完整 session 资产，同时避免页面预算和 rate limit 把路由系统锁死。
 
-当前 WebCodex relay 已完成“总控显式目标 → 指定 Web Chat 或本地 Runner → 回执”执行面，并支持结构化路由的程序化解析与受限格式修复。Worker Codex CLI 的目标配置是 `gpt-6-astra`、`thinking=medium`，GitHub 驱动的规划仍在网页端总控 Chat 内完成。
+当前 WebCodex relay 已完成“总控显式目标 → 指定 Web Chat 或本地 Runner → 回执”执行面，并支持结构化路由的程序化解析与受限格式修复。Worker Codex CLI 默认是 `gpt-6-astra`、`thinking=medium`；总控可按任务难度在 `local_runner` 路由中指定白名单模型和 `reasoning_effort`，relay 只校验并执行，不替总控猜测。GitHub 驱动的规划仍在网页端总控 Chat 内完成。
