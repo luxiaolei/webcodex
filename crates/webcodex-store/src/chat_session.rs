@@ -169,8 +169,8 @@ fn validate_web_project_url(
         return Ok(None);
     };
     let value = validate_text(&value, MAX_CHAT_WEB_PROJECT_URL_CHARS, "web_project_url")?;
-    let parsed = url::Url::parse(&value)
-        .map_err(|_| invalid("web_project_url must be an absolute URL"))?;
+    let parsed =
+        url::Url::parse(&value).map_err(|_| invalid("web_project_url must be an absolute URL"))?;
     let host = parsed.host_str().unwrap_or_default();
     if parsed.scheme() != "https"
         || !matches!(host, "chatgpt.com" | "www.chatgpt.com" | "chat.openai.com")
@@ -212,7 +212,13 @@ fn hash_create(
     use sha2::{Digest, Sha256};
     let mut hash = Sha256::new();
     hash.update(b"webcodex.chat-session.create.v1\0");
-    for value in [title, project_id, web_project_url.unwrap_or(""), provider_url, model] {
+    for value in [
+        title,
+        project_id,
+        web_project_url.unwrap_or(""),
+        provider_url,
+        model,
+    ] {
         hash.update(value.as_bytes());
         hash.update([0]);
     }
@@ -610,6 +616,56 @@ impl Database {
         conn.query_row("SELECT operation_id, session_id, state, response_id, assistant_body, error_kind, error_message, created_at_unix_ms, updated_at_unix_ms FROM wc_chat_session_operations WHERE operation_id = ?1 AND owner_principal_digest = ?2", params![operation_id, principal.digest], row_to_operation)
             .optional().map_err(store_error)?.ok_or_else(|| CommunicationStoreError::new("chat_operation_not_found", "Chat operation not found"))
     }
+
+    pub fn reconcile_chat_send(
+        &self,
+        principal: &CommunicationPrincipal,
+        operation_id: &str,
+        response_id: Option<&str>,
+        assistant_body: &str,
+    ) -> Result<ChatOperationStatus, CommunicationStoreError> {
+        validate_principal(principal)?;
+        if assistant_body.trim().is_empty() || assistant_body.len() > MAX_CHAT_MESSAGE_BYTES {
+            return Err(CommunicationStoreError::new(
+                "invalid_chat_message",
+                "assistant_body must be 1..=32768 bytes",
+            ));
+        }
+        let now = now_unix_ms();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| invalid("database lock poisoned"))?;
+        let tx = conn.unchecked_transaction().map_err(store_error)?;
+        let existing = tx
+            .query_row(
+                "SELECT operation_id, session_id, state, response_id, assistant_body, error_kind, error_message, created_at_unix_ms, updated_at_unix_ms FROM wc_chat_session_operations WHERE operation_id = ?1 AND owner_principal_digest = ?2",
+                params![operation_id, principal.digest],
+                row_to_operation,
+            )
+            .optional().map_err(store_error)?
+            .ok_or_else(|| CommunicationStoreError::new("chat_operation_not_found", "Chat operation not found"))?;
+        if existing.state != "unknown" {
+            tx.commit().map_err(store_error)?;
+            return Ok(existing);
+        }
+        let seq: i64 = tx.query_row("SELECT COALESCE(MAX(seq), 0) + 1 FROM wc_chat_session_messages WHERE session_id = ?1", params![existing.session_id], |row| row.get(0)).map_err(store_error)?;
+        tx.execute("INSERT INTO wc_chat_session_messages(message_id, session_id, seq, role, body, created_at_unix_ms) VALUES (?1, ?2, ?3, 'assistant', ?4, ?5)", params![new_id("wc_chat_msg_"), existing.session_id, seq, assistant_body, now]).map_err(store_error)?;
+        tx.execute("UPDATE wc_chat_session_operations SET state = 'completed', response_id = ?2, assistant_body = ?3, error_kind = NULL, error_message = NULL, updated_at_unix_ms = ?4 WHERE operation_id = ?1", params![operation_id, response_id, assistant_body, now]).map_err(store_error)?;
+        tx.execute("UPDATE wc_chat_sessions SET state = 'active', latest_response_id = COALESCE(?2, latest_response_id), updated_at_unix_ms = ?3 WHERE session_id = ?1", params![existing.session_id, response_id, now]).map_err(store_error)?;
+        tx.commit().map_err(store_error)?;
+        Ok(ChatOperationStatus {
+            operation_id: operation_id.to_string(),
+            session_id: existing.session_id,
+            state: "completed".to_string(),
+            response_id: response_id.map(str::to_string),
+            assistant_body: Some(assistant_body.to_string()),
+            error_kind: None,
+            error_message: None,
+            created_at_unix_ms: existing.created_at_unix_ms,
+            updated_at_unix_ms: now,
+        })
+    }
 }
 
 fn row_to_summary(row: &rusqlite::Row<'_>, offset: usize) -> rusqlite::Result<ChatSessionSummary> {
@@ -737,7 +793,10 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(created.session.web_project_url.as_deref(), Some(web_project_url.as_str()));
+        assert_eq!(
+            created.session.web_project_url.as_deref(),
+            Some(web_project_url.as_str())
+        );
 
         let envelope = match db
             .begin_chat_send(
@@ -751,7 +810,10 @@ mod tests {
             ChatSendStart::Started(value) => value,
             ChatSendStart::Existing(_) => panic!("first send must start"),
         };
-        assert_eq!(envelope.web_project_url.as_deref(), Some(web_project_url.as_str()));
+        assert_eq!(
+            envelope.web_project_url.as_deref(),
+            Some(web_project_url.as_str())
+        );
     }
 
     #[test]
