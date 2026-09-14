@@ -264,7 +264,7 @@ async fn run_provider(
     envelope: crate::db::ChatSendEnvelope,
 ) {
     let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_secs(7200))
         .build()
     {
         Ok(client) => client,

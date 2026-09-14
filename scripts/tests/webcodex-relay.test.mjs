@@ -286,7 +286,7 @@ test("processMessage reports an unknown local result to the controller once", as
   assert.equal(calls.filter(({ body }) => body.action === "send" && body.session_id === "wc_chat_controller").length, 1);
 });
 
-test("processMessage resolves a stale controller operation before retrying a failure receipt", async () => {
+test("processMessage reconciles a controller operation only after exact provider read-back", async () => {
   const root = await mkdtemp(join(tmpdir(), "webcodex-relay-controller-recovery-"));
   const statePath = join(root, "state.json");
   const sourceBody = JSON.stringify({
@@ -312,22 +312,39 @@ test("processMessage resolves a stale controller operation before retrying a fai
   const config = {
     api_url: "http://webcodex.test", provider_url: "http://provider.test", profile: "quantcompany",
     project: "agent:test:quantcompany", controller_session: "wc_chat_controller", targets: {},
-    min_send_interval_ms: 0, controller_unknown_recovery: "resolve_stale", controller_unknown_max_age_ms: 60_000,
+    min_send_interval_ms: 0,
   };
   const calls = [];
   const oldFetch = globalThis.fetch;
   globalThis.fetch = async (url, options) => {
+    if (url.startsWith("http://provider.test/")) {
+      calls.push({ url, body: null });
+      return Response.json({
+        generating: false,
+        messages: [
+          { role: "user", text: sourceBody },
+          { role: "assistant", text: "已收到失败收据" },
+        ],
+      });
+    }
     const body = JSON.parse(options.body);
     calls.push({ url, body });
     if (body.action === "send") return Response.json({ error: { code: "chat_session_busy", message: "Chat session requires operation reconciliation before another send (operation_id: wc_chat_op_stale)" } }, { status: 409 });
-    if (body.action === "operation") return Response.json({ state: "unknown", operation_id: "wc_chat_op_stale", updated_at_unix_ms: Date.now() - 120_000 });
-    if (body.action === "resolve_unknown") return Response.json({ state: "failed", error_kind: "unknown_resolved" });
+    if (body.action === "operation") return Response.json({
+      state: "unknown", operation_id: "wc_chat_op_stale", session_id: "wc_chat_controller",
+      created_at_unix_ms: 1_700_000_000_000, updated_at_unix_ms: 1_700_000_000_000,
+    });
+    if (body.action === "read") return Response.json({
+      truncated: false,
+      messages: [{ role: "user", body: sourceBody, created_at_unix_ms: 1_700_000_000_000 }],
+    });
+    if (body.action === "reconcile") return Response.json({ state: "completed", assistant_body: "已收到失败收据" });
     throw new Error(`unexpected call: ${url}`);
   };
   try {
     await processMessage(config, state, { message_id: "controller-recovery-1", role: "user", text: sourceBody }, statePath);
   } finally { globalThis.fetch = oldFetch; }
-  assert.deepEqual(calls.map(({ body }) => body.action), ["send", "operation", "resolve_unknown"]);
+  assert.deepEqual(calls.map(({ body }) => body?.action || "provider"), ["send", "operation", "read", "provider", "reconcile"]);
   assert.equal(state.controller_recovery_operation_id, "wc_chat_op_stale");
   assert.equal(state.events["controller-recovery-1"].failure_report_state, "blocked");
 });
@@ -349,7 +366,10 @@ test("processMessage confirms a controller reply after an ambiguous operation", 
   globalThis.fetch = async (url, options = {}) => {
     if (url.startsWith("http://provider.test/")) {
       calls.push({ url, body: null });
-      return Response.json({ messages: [{ message_id: "controller-reply", role: "user", text: "[from:QC02]\n目标结果" }] });
+      return Response.json({ generating: false, messages: [
+        { message_id: "controller-request", role: "user", text: "[from:QC02]\n目标结果" },
+        { message_id: "controller-reply", role: "assistant", text: "[from:QC02]\n目标结果" },
+      ] });
     }
     const body = JSON.parse(options.body);
     calls.push({ url, body });
@@ -365,6 +385,9 @@ test("processMessage confirms a controller reply after an ambiguous operation", 
     if (body.action === "operation" && body.operation_id === "wc_chat_op_reply") {
       return Response.json({ state: "unknown", error_kind: "provider_timeout", error_message: "response lost" });
     }
+    if (body.action === "reconcile") {
+      return Response.json({ state: "completed", assistant_body: "[from:QC02]\n目标结果" });
+    }
     throw new Error(`unexpected call: ${JSON.stringify(body)}`);
   };
   try {
@@ -373,7 +396,7 @@ test("processMessage confirms a controller reply after an ambiguous operation", 
     globalThis.fetch = oldFetch;
   }
   assert.equal(state.events["reply-reconcile-1"].state, "replied");
-  assert.equal(state.events["reply-reconcile-1"].reply_recovered, true);
+  assert.equal(calls.filter(({ body }) => body?.action === "reconcile").length, 1);
 });
 
 test("processMessage retries a pre-dispatch writable slot conflict", async () => {

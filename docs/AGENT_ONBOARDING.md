@@ -76,16 +76,17 @@ The fallback adapter is vendored at `vendor/codex-chatgpt-web`.
 {"action":"send","session_id":"wc_chat_...","body":"Run the small calculation","idempotency_key":"send-1"}
 {"action":"operation","operation_id":"wc_chat_op_..."}
 {"action":"read","session_id":"wc_chat_...","after_seq":0,"limit":100}
-{"action":"resolve_unknown","operation_id":"wc_chat_op_...","reason":"provider read-back found no assistant response after the recovery threshold"}
+{"action":"resolve_unknown","operation_id":"wc_chat_op_...","reason":"independent provider read-back confirmed no assistant response; manual recovery"}
 ```
 
 `send` is asynchronous and returns `202`. Keep `pending`, `completed`,
 `failed`, and `unknown` separate. Timeouts, malformed responses, empty responses,
 and ambiguous network results remain `unknown` until reconciled; never blindly
 retry them. The session cannot change its local or native Project binding.
-If a provider read-back shows no assistant response and an operation is stale,
-`resolve_unknown` may release it as an auditable failed outcome; it never adds
-an assistant message or authorizes a blind replay.
+If a provider read-back shows no assistant response, keep the operation
+`unknown` and report it to the controller. Only a human-confirmed independent
+check may use `resolve_unknown`; it never adds an assistant message or
+authorizes a blind replay.
 
 For the MCP path, connect the WebCodex endpoint in ChatGPT Work, call
 `task_start(mode=read_only)`, save its `task_id`, then call `files_list` (or the

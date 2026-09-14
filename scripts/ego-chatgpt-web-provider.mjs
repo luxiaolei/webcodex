@@ -165,26 +165,15 @@ async function currentTurnCount(page) {
 async function sessionMessages(page) {
   return page.evaluate(() => {
     const messages = [];
-    for (const node of document.querySelectorAll('[data-message-author-role]')) {
-      const role = node.getAttribute('data-message-author-role');
+    for (const node of document.querySelectorAll('[data-message-author-role], [data-turn="assistant"]')) {
+      if (node.matches('[data-turn="assistant"]') && node.querySelector('[data-message-author-role]')) continue;
+      const role = node.getAttribute('data-message-author-role') || node.getAttribute('data-turn');
       if (role !== 'user' && role !== 'assistant') continue;
       const text = node.textContent?.trim() || '';
       if (!text) continue;
       const container = node.closest('[data-message-id]') || node;
       const messageId = container.getAttribute('data-message-id') || null;
       messages.push({ message_id: messageId, role, text });
-    }
-    // ChatGPT's current Project markup keeps assistant turns under data-turn
-    // without the older data-message-author-role attribute.
-    for (const node of document.querySelectorAll('[data-turn="assistant"]')) {
-      if (node.querySelector('[data-message-author-role]')) continue;
-      const text = node.textContent?.trim() || '';
-      if (!text) continue;
-      messages.push({
-        message_id: node.getAttribute('data-message-id') || null,
-        role: 'assistant',
-        text,
-      });
     }
     return messages;
   });
@@ -200,6 +189,7 @@ async function observeSession(id) {
   return {
     session_id: id,
     messages,
+    generating: await page.evaluate(() => Boolean(document.querySelector('button[aria-label="Stop answering"], button[data-testid="stop-button"]'))),
     cursor: messages.at(-1)?.message_id || null,
   };
 }
@@ -290,6 +280,11 @@ async function pageForSession(task, id, sessions, webProjectUrl) {
   }
   await page.goto(saved?.url || webProjectUrl || "https://chatgpt.com/");
   await waitForComposer(page);
+  if (!saved?.url && webProjectUrl) {
+    const expected = new URL(webProjectUrl).pathname.match(/\/g\/(g-p-[a-f0-9]+)/i)?.[1];
+    const actual = new URL(await page.url()).pathname;
+    if (!expected || !actual.startsWith(`/g/${expected}`)) throw new Error("ChatGPT Project navigation did not preserve the configured Project; nothing was sent");
+  }
   if (saved) {
     saved.page_label = page.label;
     writeJson(sessionsPath, sessions);
@@ -321,8 +316,13 @@ async function runResponse(payload) {
   const before = await currentTurnCount(page);
   const rateLimitDeadline = Date.now() + 60_000;
   markSendStarted();
+  sessions[id] = { ...(saved || {}), page_label: page.label, url: await page.url(), project_id: project, space_id: spaceId, web_project_url: webProjectUrl, pending_body: text };
+  writeJson(sessionsPath, sessions);
   await page.fill("loc=css:#prompt-textarea", text);
   await page.click('loc=css:button[aria-label="Send prompt"]');
+  await page.waitForURL(/\/c\//, { timeout: 30_000 });
+  sessions[id].url = await page.url();
+  writeJson(sessionsPath, sessions);
   await page.waitForFunction(({ turnCount, rateLimitDeadline: deadline }) => {
     const turns = document.querySelectorAll('[data-turn="assistant"]');
     const latest = turns[turns.length - 1];
@@ -334,7 +334,7 @@ async function runResponse(payload) {
       || /^(?:pro\s+thinking|thinking|思考中|正在思考)\s*$/i.test(text);
     const ready = turns.length > turnCount && !stop && Boolean(text) && !placeholder;
     return ready || (!ready && turns.length <= turnCount && rateLimited && Date.now() >= deadline);
-  }, { turnCount: before, rateLimitDeadline }, { timeout: 180_000 });
+  }, { turnCount: before, rateLimitDeadline }, { timeout: 3_600_000 });
   const result = await page.evaluate(() => {
     const turns = [...document.querySelectorAll('[data-turn="assistant"]')];
     const turn = turns.at(-1);
