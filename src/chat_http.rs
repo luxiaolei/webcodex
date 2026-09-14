@@ -50,6 +50,11 @@ enum ChatSessionRequest {
     Operation {
         operation_id: String,
     },
+    Reconcile {
+        operation_id: String,
+        response_id: Option<String>,
+        assistant_body: String,
+    },
 }
 
 #[handler]
@@ -70,7 +75,9 @@ async fn chat_session(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     };
     let is_mutation = matches!(
         request,
-        ChatSessionRequest::Create { .. } | ChatSessionRequest::Send { .. }
+        ChatSessionRequest::Create { .. }
+            | ChatSessionRequest::Send { .. }
+            | ChatSessionRequest::Reconcile { .. }
     );
     let allowed = if is_mutation {
         auth.has_scope(SCOPE_COMMUNICATION_READ) && auth.has_scope(SCOPE_COMMUNICATION_MANAGE)
@@ -152,6 +159,21 @@ async fn chat_session(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         },
         ChatSessionRequest::Operation { operation_id } => {
             match db.read_chat_operation(&principal, &operation_id) {
+                Ok(value) => res.render(Json(value)),
+                Err(error) => render_store_error(res, error),
+            }
+        }
+        ChatSessionRequest::Reconcile {
+            operation_id,
+            response_id,
+            assistant_body,
+        } => {
+            match db.reconcile_chat_send(
+                &principal,
+                &operation_id,
+                response_id.as_deref(),
+                &assistant_body,
+            ) {
                 Ok(value) => res.render(Json(value)),
                 Err(error) => render_store_error(res, error),
             }

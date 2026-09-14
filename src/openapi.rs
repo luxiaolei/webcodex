@@ -336,12 +336,16 @@ fn schemas() -> Value {
                 {
                     "type": "object", "additionalProperties": false, "required": ["action", "operation_id"],
                     "properties": {"action": {"const": "operation"}, "operation_id": {"type": "string"}}
+                },
+                {
+                    "type": "object", "additionalProperties": false, "required": ["action", "operation_id", "assistant_body"],
+                    "properties": {"action": {"const": "reconcile"}, "operation_id": {"type": "string"}, "response_id": {"type": "string"}, "assistant_body": {"type": "string", "maxLength": 32768, "description": "Assistant text independently read back from the bound provider after an unknown operation."}}
                 }
             ]
         },
         "ChatSessionResponse": {
             "type": "object", "additionalProperties": true,
-            "description": "Chat session summary, retained messages, or operation status. send returns 202 with operation_id; poll with action=operation. unknown means the adapter outcome cannot be safely reconstructed and must be reconciled before another send."
+            "description": "Chat session summary, retained messages, or operation status. send returns 202 with operation_id; poll with action=operation. An unknown operation can be reconciled only with assistant text independently read back from the bound provider."
         },
         "ToolsListRequest": {
             "type": "object",

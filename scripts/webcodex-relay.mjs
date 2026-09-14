@@ -265,6 +265,12 @@ function localRunnerGoal(routed) {
   return `${routed.body}${acceptance}`;
 }
 
+function localRunnerTaskGoal(goal) {
+  const limit = 3_000;
+  if (Buffer.byteLength(goal, "utf8") <= limit) return goal;
+  return `${Buffer.from(goal, "utf8").subarray(0, limit).toString("utf8")}\n\n[full prompt is submitted with the runner command]`;
+}
+
 function localRunnerOutput(execution) {
   const stdout = String(execution?.output_tail?.stdout || "");
   const messages = [];
@@ -292,7 +298,7 @@ async function runLocalRunner(config, state, path, routed, event, key, attempt) 
     const started = await requestJson(`${config.api_url}/api/connector/task/start`, {
       method: "POST",
       headers: headers(config),
-      body: JSON.stringify({ goal, mode: config.local_runner_mode || "normal" }),
+      body: JSON.stringify({ goal: localRunnerTaskGoal(goal), mode: config.local_runner_mode || "normal" }),
     });
     const startError = connectorError(started, "task_start");
     if (startError) throw startError;
