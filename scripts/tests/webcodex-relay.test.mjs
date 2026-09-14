@@ -237,6 +237,55 @@ test("processMessage applies controller-selected runner model and reasoning", as
   assert.equal(state.events["local-settings-1"].local_reasoning_effort, "low");
 });
 
+test("processMessage reports an unknown local result to the controller once", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-failure-report-"));
+  const statePath = join(root, "state.json");
+  const state = { version: 1, profile: "quantcompany", ignored_message_ids: [], events: {} };
+  const config = {
+    api_url: "http://webcodex.test", provider_url: "http://provider.test", profile: "quantcompany",
+    project: "agent:test:quantcompany", controller_session: "wc_chat_controller", targets: {},
+    min_send_interval_ms: 0, poll_ms: 1_000, local_runner_max_wait_ms: 10_000,
+  };
+  const calls = [];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push({ url, body });
+    if (url.endsWith("/api/connector/task/start")) return Response.json({ ok: true, task_id: "wc_task_unknown123" });
+    if (url.endsWith("/api/connector/commands/run")) return Response.json({ ok: true, data: { execution: { execution_status: "running" } } });
+    if (url.endsWith("/api/connector/task/review")) return Response.json({ ok: true, data: {
+      execution: { execution_status: "failed", output_tail: { stdout: "", stderr: "Codex CLI did not return within 120 seconds" } },
+    } });
+    if (url.endsWith("/api/chat/session") && body.action === "send") {
+      assert.equal(body.session_id, "wc_chat_controller");
+      assert.match(body.body, /^\[from:LOCAL_RUNNER\]\n/);
+      assert.match(body.body, /"status":"unknown"/);
+      assert.match(body.body, /command_timeout|did not return/);
+      return Response.json({ operation_id: "wc_chat_op_failure_report" }, { status: 202 });
+    }
+    if (url.endsWith("/api/chat/session") && body.action === "operation") {
+      assert.equal(body.operation_id, "wc_chat_op_failure_report");
+      return Response.json({ state: "completed", assistant_body: "已收到失败收据" });
+    }
+    throw new Error(`unexpected call: ${url}`);
+  };
+  try {
+    await processMessage(config, state, {
+      message_id: "unknown-report-1", role: "user", text: JSON.stringify({
+        version: 1,
+        destination: { kind: "local_runner", project: "agent:test:quantcompany" },
+        prompt: "执行一个会超时的任务",
+        mode: "serial",
+        acceptance: ["返回结果"],
+      }),
+    }, statePath);
+  } finally { globalThis.fetch = oldFetch; }
+  const event = state.events["unknown-report-1"];
+  assert.equal(event.state, "unknown");
+  assert.equal(event.failure_report_state, "reported");
+  assert.equal(calls.filter(({ body }) => body.action === "send" && body.session_id === "wc_chat_controller").length, 1);
+});
+
 test("processMessage confirms a controller reply after an ambiguous operation", async () => {
   const root = await mkdtemp(join(tmpdir(), "webcodex-relay-reply-reconcile-"));
   const statePath = join(root, "state.json");

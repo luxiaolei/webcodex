@@ -327,6 +327,41 @@ function localRunnerOutput(execution) {
   return (messages.at(-1) || stdout).trim();
 }
 
+function unknownFailureBody(routed, key, event, error) {
+  const payload = {
+    schema: "webcodex.relay.failure.v1",
+    status: "unknown",
+    source_message_id: key,
+    target: routed.alias || "LOCAL_RUNNER",
+    attempts: Number(event.attempts || 0),
+    error: String(error).slice(0, 4_000),
+    next_action: "controller_decide_retry_model_or_destination",
+  };
+  return `[from:${routed.alias || "LOCAL_RUNNER"}]\n${JSON.stringify(payload)}`.slice(0, maxMessageChars);
+}
+
+async function reportUnknownFailure(config, state, path, routed, event, key, error) {
+  if (event.failure_report_state === "reported" || event.failure_report_state === "unknown") return;
+  const body = unknownFailureBody(routed, key, event, error);
+  try {
+    await sendSession(config, state, path, config.controller_session, body, `${config.profile}:${key}:failure-report`);
+    event.failure_report_state = "reported";
+    delete event.failure_report_retry_at;
+    delete event.failure_report_error;
+  } catch (reportError) {
+    event.failure_report_state = reportError instanceof RateLimitError && reportError.safeToRetry
+      ? "rate_limited"
+      : "unknown";
+    if (event.failure_report_state === "rate_limited") {
+      event.failure_report_retry_at = Date.now() + reportError.retryAfterMs;
+    }
+    if (reportError instanceof ChatOperationUnknownError) event.failure_report_operation_id = reportError.operationId;
+    event.failure_report_error = String(reportError);
+  }
+  event.updated_at = new Date().toISOString();
+  saveState(path, state);
+}
+
 function connectorError(body, action) {
   if (body?.ok !== false) return null;
   return new Error(`${action} failed: ${body?.error?.code || "connector_error"}: ${body?.error?.message || "no detail"}`);
@@ -426,8 +461,12 @@ async function processMessage(config, state, message, path) {
     && Number(existing.retry_at || 0) <= Date.now();
   const slotRetryable = existing && existing.state === "unknown" && !existing.local_task_id
     && reusableSlotConflict(existing.error) && Number(existing.retry_at || 0) <= Date.now();
+  const failureReportPending = existing && existing.state === "unknown" && !existing.failure_report_state
+    && !reusableSlotConflict(existing.error);
+  const failureReportRetryable = existing && existing.state === "unknown" && existing.failure_report_state === "rate_limited"
+    && Number(existing.failure_report_retry_at || 0) <= Date.now();
   const resumable = existing && existing.state === "forwarding";
-  if (existing && !retryable && !slotRetryable && !resumable) return;
+  if (existing && !retryable && !slotRetryable && !resumable && !failureReportPending && !failureReportRetryable) return;
   if (message.role !== "user" && message.role !== "assistant") {
     if (existing) return;
     state.ignored_message_ids.push(key);
@@ -443,6 +482,10 @@ async function processMessage(config, state, message, path) {
   if (!routed) {
     state.events[key] = { state: "unrouted", source_message_id: key, source_body: message.text, updated_at: new Date().toISOString() };
     saveState(path, state);
+    return;
+  }
+  if (failureReportPending || failureReportRetryable) {
+    await reportUnknownFailure(config, state, path, routed, existing, key, existing.error || "unknown result");
     return;
   }
   const event = existing || (state.events[key] = {
@@ -538,6 +581,9 @@ async function processMessage(config, state, message, path) {
     event.error = String(error);
     event.updated_at = new Date().toISOString();
     saveState(path, state);
+    if (event.state === "unknown" && !reusableSlotConflict(error)) {
+      await reportUnknownFailure(config, state, path, routed, event, key, error);
+    }
   }
 }
 
