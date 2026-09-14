@@ -7,19 +7,23 @@ starts a ChatGPT Web Responses turn through the shared signed-in Ego Browser
 provider, and retains messages and operation state in the WebCodex SQLite
 store.
 
-The request uses one of four actions:
+The request uses one of five actions:
 
 ```json
 {"action":"create","title":"Research","project":"runner/project","web_project_url":"https://chatgpt.com/g/g-p-<id>-<slug>/project","idempotency_key":"create-1"}
 {"action":"send","session_id":"wc_chat_...","body":"Run the small calculation","idempotency_key":"send-1"}
 {"action":"operation","operation_id":"wc_chat_op_..."}
 {"action":"read","session_id":"wc_chat_...","after_seq":0,"limit":100}
+{"action":"resolve_unknown","operation_id":"wc_chat_op_...","reason":"provider read-back found no assistant response after the recovery threshold"}
 ```
 
 `send` returns `202` with an operation id. The operation transitions to
 `completed`, `failed`, or `unknown`; a request timeout, provider error, malformed
 response, or empty response is retained as `unknown` and does not trigger a
-blind retry. An `unknown` session must be reconciled before another send.
+blind retry. An `unknown` session must be reconciled before another send. When
+independent provider read-back cannot find an assistant response and the
+operation is stale, `resolve_unknown` records an auditable failed outcome and
+releases the session without fabricating an assistant message.
 
 The provider URL defaults to `http://127.0.0.1:17841` and can be changed with
 `WEBCODEX_CHATGPT_WEB_URL`; the model defaults to `chatgpt-web/medium` and can

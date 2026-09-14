@@ -55,6 +55,10 @@ enum ChatSessionRequest {
         response_id: Option<String>,
         assistant_body: String,
     },
+    ResolveUnknown {
+        operation_id: String,
+        reason: String,
+    },
 }
 
 #[handler]
@@ -78,6 +82,7 @@ async fn chat_session(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         ChatSessionRequest::Create { .. }
             | ChatSessionRequest::Send { .. }
             | ChatSessionRequest::Reconcile { .. }
+            | ChatSessionRequest::ResolveUnknown { .. }
     );
     let allowed = if is_mutation {
         auth.has_scope(SCOPE_COMMUNICATION_READ) && auth.has_scope(SCOPE_COMMUNICATION_MANAGE)
@@ -178,6 +183,13 @@ async fn chat_session(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 Err(error) => render_store_error(res, error),
             }
         }
+        ChatSessionRequest::ResolveUnknown {
+            operation_id,
+            reason,
+        } => match db.resolve_unknown_chat_send(&principal, &operation_id, &reason) {
+            Ok(value) => res.render(Json(value)),
+            Err(error) => render_store_error(res, error),
+        },
         ChatSessionRequest::Send {
             session_id,
             body,

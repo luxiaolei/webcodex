@@ -43,6 +43,14 @@ class ChatOperationUnknownError extends Error {
   }
 }
 
+class ChatSessionBusyError extends Error {
+  constructor(message, operationId) {
+    super(message);
+    this.name = "ChatSessionBusyError";
+    this.operationId = operationId || null;
+  }
+}
+
 function readJson(path, fallback) {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return fallback; }
 }
@@ -82,6 +90,8 @@ function loadConfig(path) {
     poll_ms: boundedNumber(config.poll_ms ?? defaultPollMs, defaultPollMs, 1_000, 60_000),
     min_send_interval_ms: boundedNumber(config.min_send_interval_ms ?? defaultMinSendIntervalMs, defaultMinSendIntervalMs, 0, 300_000),
     rate_limit_backoff_ms: boundedNumber(config.rate_limit_backoff_ms ?? defaultRateLimitBackoffMs, defaultRateLimitBackoffMs, 1_000, maxRateLimitBackoffMs),
+    controller_unknown_recovery: config.controller_unknown_recovery === "resolve_stale" ? "resolve_stale" : "manual",
+    controller_unknown_max_age_ms: boundedNumber(config.controller_unknown_max_age_ms ?? 900_000, 900_000, 60_000, 86_400_000),
     local_runner_mode: config.local_runner_mode === "read_only" ? "read_only" : "normal",
     local_runner_sandbox: config.local_runner_sandbox === "read-only" ? "read-only" : "workspace-write",
     local_runner_model: localRunnerModel,
@@ -196,7 +206,11 @@ async function requestJson(url, options = {}) {
         body?.error?.code === "preflight_rate_limited",
       );
     }
-    throw new Error(`${response.status} ${body?.error?.message || body?.message || response.statusText}`);
+    const message = `${response.status} ${body?.error?.message || body?.message || response.statusText}`;
+    if (body?.error?.code === "chat_session_busy") {
+      throw new ChatSessionBusyError(message, body?.error?.operation_id);
+    }
+    throw new Error(message);
   }
   return body;
 }
@@ -340,6 +354,38 @@ function unknownFailureBody(routed, key, event, error) {
   return `[from:${routed.alias || "LOCAL_RUNNER"}]\n${JSON.stringify(payload)}`.slice(0, maxMessageChars);
 }
 
+function busyOperationId(error) {
+  if (error instanceof ChatSessionBusyError && error.operationId) return error.operationId;
+  return String(error).match(/operation_id[:=]\s*([A-Za-z0-9_-]+)/i)?.[1] || null;
+}
+
+async function resolveStaleControllerOperation(config, state, path, error) {
+  if (config.controller_unknown_recovery !== "resolve_stale") return false;
+  const operationId = busyOperationId(error);
+  if (!operationId) return false;
+  const operation = await requestJson(`${config.api_url}/api/chat/session`, {
+    method: "POST",
+    headers: headers(config),
+    body: JSON.stringify({ action: "operation", operation_id: operationId }),
+  });
+  if (operation.state !== "unknown") return false;
+  const updatedAt = Number(operation.updated_at_unix_ms || operation.created_at_unix_ms || 0);
+  if (!updatedAt || Date.now() - updatedAt < config.controller_unknown_max_age_ms) return false;
+  await requestJson(`${config.api_url}/api/chat/session`, {
+    method: "POST",
+    headers: headers(config),
+    body: JSON.stringify({
+      action: "resolve_unknown",
+      operation_id: operationId,
+      reason: `relay stale recovery after independent controller read; operation remained unknown for ${Math.round((Date.now() - updatedAt) / 1000)}s`,
+    }),
+  });
+  state.controller_recovery_operation_id = operationId;
+  state.controller_recovery_at = new Date().toISOString();
+  saveState(path, state);
+  return true;
+}
+
 async function reportUnknownFailure(config, state, path, routed, event, key, error) {
   if (event.failure_report_state === "reported") return;
   const body = unknownFailureBody(routed, key, event, error);
@@ -350,6 +396,9 @@ async function reportUnknownFailure(config, state, path, routed, event, key, err
     delete event.failure_report_error;
   } catch (reportError) {
     const controllerBusy = /chat session requires operation reconciliation|chat session busy/i.test(String(reportError));
+    const recovered = controllerBusy
+      ? await resolveStaleControllerOperation(config, state, path, reportError).catch(() => false)
+      : false;
     event.failure_report_state = controllerBusy
       ? "blocked"
       : reportError instanceof RateLimitError && reportError.safeToRetry
@@ -358,6 +407,8 @@ async function reportUnknownFailure(config, state, path, routed, event, key, err
     if (event.failure_report_state === "rate_limited") {
       event.failure_report_retry_at = Date.now() + reportError.retryAfterMs;
     } else if (event.failure_report_state === "blocked") {
+      event.failure_report_retry_at = Date.now() + (recovered ? config.min_send_interval_ms : 60_000);
+    } else {
       event.failure_report_retry_at = Date.now() + 60_000;
     }
     if (reportError instanceof ChatOperationUnknownError) event.failure_report_operation_id = reportError.operationId;
@@ -472,7 +523,7 @@ async function processMessage(config, state, message, path) {
     && existing.failure_report_state === "unknown"
     && /chat session requires operation reconciliation|chat session busy/i.test(String(existing.failure_report_error));
   const failureReportRetryable = existing && existing.state === "unknown"
-    && (["rate_limited", "blocked"].includes(existing.failure_report_state) || failureReportPreviouslyBlocked)
+    && (["rate_limited", "blocked", "unknown"].includes(existing.failure_report_state) || failureReportPreviouslyBlocked)
     && Number(existing.failure_report_retry_at || 0) <= Date.now();
   const resumable = existing && existing.state === "forwarding";
   if (existing && !retryable && !slotRetryable && !resumable && !failureReportPending && !failureReportRetryable) return;
