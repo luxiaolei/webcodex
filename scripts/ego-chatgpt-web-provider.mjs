@@ -158,8 +158,25 @@ async function waitForComposer(page) {
   await page.waitForSelector("loc=css:#prompt-textarea", { timeout: 15_000 });
 }
 
-async function currentTurnCount(page) {
-  return page.evaluate(() => document.querySelectorAll('[data-turn="assistant"]').length);
+function completedTurn(input) {
+  const { body, userMessageId } = typeof input === "string" ? { body: input } : input;
+  const normalize = (value) => String(value || "").replace(/\s+/gu, " ").trim();
+  if (document.querySelector('button[aria-label="Stop answering"], button[data-testid="stop-button"]')) return null;
+  const nodes = [...document.querySelectorAll('[data-message-author-role], [data-turn="assistant"]')]
+    .filter((node) => !(node.matches('[data-turn="assistant"]') && node.querySelector('[data-message-author-role]')));
+  const matches = nodes.map((node, index) => ({ node, index }))
+    .filter(({ node }) => node.getAttribute('data-message-author-role') === 'user'
+      && (userMessageId ? node.getAttribute('data-message-id') === userMessageId : normalize(node.textContent) === normalize(body)));
+  if (matches.length !== 1) return null;
+  const node = nodes[matches[0].index + 1];
+  if (!node || (node.getAttribute('data-message-author-role') || node.getAttribute('data-turn')) !== 'assistant') return null;
+  const turn = node.closest('[data-turn="assistant"]');
+  // Virtualized history can keep the same turn count while a new reply arrives.
+  // Match the request and require the final-response actions, not a text preview.
+  if (!turn?.querySelector('button[data-testid="copy-turn-action-button"], button[aria-label="Copy response"]')) return null;
+  const text = node.textContent?.trim();
+  if (!text) return null;
+  return { text, messageId: node.getAttribute('data-message-id') || turn.getAttribute('data-turn-id') };
 }
 
 async function sessionMessages(page) {
@@ -189,6 +206,8 @@ async function observeSession(id) {
   return {
     session_id: id,
     messages,
+    pending_body: saved.pending_body,
+    pending_user_message_id: saved.pending_user_message_id,
     generating: await page.evaluate(() => Boolean(document.querySelector('button[aria-label="Stop answering"], button[data-testid="stop-button"]'))),
     cursor: messages.at(-1)?.message_id || null,
   };
@@ -313,39 +332,31 @@ async function runResponse(payload) {
   await waitForSendWindow();
   const page = await pageForSession(task, id, sessions, webProjectUrl);
   await dismissRateLimitDialog(page);
-  const before = await currentTurnCount(page);
-  const rateLimitDeadline = Date.now() + 60_000;
   markSendStarted();
-  sessions[id] = { ...(saved || {}), page_label: page.label, url: await page.url(), project_id: project, space_id: spaceId, web_project_url: webProjectUrl, pending_body: text };
+  sessions[id] = { ...(saved || {}), page_label: page.label, url: await page.url(), project_id: project, space_id: spaceId, web_project_url: webProjectUrl, pending_body: text, pending_user_message_id: null };
   writeJson(sessionsPath, sessions);
+  const previousUserId = await page.evaluate(() => [...document.querySelectorAll('[data-message-author-role="user"]')].at(-1)?.getAttribute('data-message-id'));
   await page.fill("loc=css:#prompt-textarea", text);
   await page.click('loc=css:button[aria-label="Send prompt"]');
   await page.waitForURL(/\/c\//, { timeout: 30_000 });
   sessions[id].url = await page.url();
   writeJson(sessionsPath, sessions);
-  await page.waitForFunction(({ turnCount, rateLimitDeadline: deadline }) => {
-    const turns = document.querySelectorAll('[data-turn="assistant"]');
-    const latest = turns[turns.length - 1];
-    const message = latest?.querySelector('[data-message-author-role="assistant"]');
-    const text = message?.textContent?.trim() || latest?.textContent?.trim() || "";
-    const stop = document.querySelector('button[aria-label="Stop answering"]');
-    const rateLimited = /too many requests|you(?:'|’)?re making requests too quickly|请求太快|请求过快/i.test(document.body?.innerText || "");
-    const placeholder = /^chatgpt\s+said\s*:\s*(?:(?:pro\s+thinking|thinking|思考中|正在思考)\s*)?$/i.test(text)
-      || /^(?:pro\s+thinking|thinking|思考中|正在思考)\s*$/i.test(text);
-    const ready = turns.length > turnCount && !stop && Boolean(text) && !placeholder;
-    return ready || (!ready && turns.length <= turnCount && rateLimited && Date.now() >= deadline);
-  }, { turnCount: before, rateLimitDeadline }, { timeout: 3_600_000 });
-  const result = await page.evaluate(() => {
-    const turns = [...document.querySelectorAll('[data-turn="assistant"]')];
-    const turn = turns.at(-1);
-    const message = turn?.querySelector('[data-message-author-role="assistant"]');
-    return {
-      text: message?.textContent?.trim() || turn?.textContent?.trim() || "",
-      messageId: message?.getAttribute("data-message-id") || null,
-    };
-  });
-  if (!result.text && await pageHasRateLimit(page)) throw markRateLimited(false);
-  if (!result.text) throw new Error("Ego Browser returned an empty assistant turn");
+  const deadline = Date.now() + 3_600_000;
+  let result;
+  while (Date.now() < deadline) {
+    if (!sessions[id].pending_user_message_id) {
+      const userId = await page.evaluate(() => [...document.querySelectorAll('[data-message-author-role="user"]')].at(-1)?.getAttribute('data-message-id'));
+      if (userId && userId !== previousUserId) {
+        sessions[id].pending_user_message_id = userId;
+        writeJson(sessionsPath, sessions);
+      }
+    }
+    result = await page.evaluate(completedTurn, { body: text, userMessageId: sessions[id].pending_user_message_id });
+    if (result) break;
+    if (await pageHasRateLimit(page)) throw markRateLimited(false);
+    await sleep(1000);
+  }
+  if (!result) throw new Error("Ego Browser assistant response did not complete within one hour");
   const responseId = `ego_${createHash("sha256").update(`${id}\0${result.messageId || result.text}`).digest("hex").slice(0, 32)}`;
   sessions[id] = {
     ...(saved || {}),
@@ -356,6 +367,8 @@ async function runResponse(payload) {
     space_id: spaceId,
     web_project_url: webProjectUrl,
   };
+  delete sessions[id].pending_body;
+  delete sessions[id].pending_user_message_id;
   writeJson(sessionsPath, sessions);
   markSendSucceeded();
   return {
@@ -475,4 +488,4 @@ else if (mode === "setup") await setup();
 else if (mode === "status") await status();
 else await serve();
 
-export { pageForSession, spaceIdForSession };
+export { pageForSession, spaceIdForSession, completedTurn };
