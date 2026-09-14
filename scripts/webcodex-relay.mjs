@@ -276,7 +276,7 @@ function shellQuote(value) {
 function localRunnerCommand(config, prompt) {
   const sandbox = config.local_runner_sandbox || "workspace-write";
   return [
-    "codex exec --ephemeral --skip-git-repo-check",
+    "codex exec --ephemeral --ignore-user-config --skip-git-repo-check",
     `--sandbox ${sandbox}`,
     "--model gpt-6-astra",
     "-c model_reasoning_effort=medium",
@@ -437,6 +437,12 @@ async function processMessage(config, state, message, path) {
     attempts: 0,
     updated_at: new Date().toISOString(),
   });
+  if (slotRetryable) {
+    event.state = "forwarding";
+    event.previous_error = event.error;
+    delete event.error;
+    delete event.retry_at;
+  }
   saveState(path, state);
   try {
     const attempt = Number(event.attempts || 0) + 1;

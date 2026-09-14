@@ -134,6 +134,7 @@ test("processMessage dispatches a local_runner route through Runner and Codex CL
     }
     if (url.endsWith("/api/connector/commands/run")) {
       assert.match(body.command, /codex exec .*--model gpt-6-astra .*medium/);
+      assert.match(body.command, /codex exec .*--ignore-user-config/);
       assert.match(body.command, /读取仓库并只返回名称/);
       return Response.json({
         ok: true,
@@ -278,7 +279,10 @@ test("processMessage retries a pre-dispatch writable slot conflict", async () =>
   globalThis.fetch = async (url, options) => {
     const body = JSON.parse(options.body);
     if (url.endsWith("/api/connector/task/start")) return Response.json({ ok: true, task_id: "wc_task_retry123", run_id: "wc_run_retry123" });
-    if (url.endsWith("/api/connector/commands/run")) return Response.json({ ok: true, data: { execution: { execution_status: "running" } } });
+    if (url.endsWith("/api/connector/commands/run")) {
+      assert.equal(state.events["slot-retry-1"].state, "forwarding");
+      return Response.json({ ok: true, data: { execution: { execution_status: "running" } } });
+    }
     if (url.endsWith("/api/connector/task/review")) return Response.json({ ok: true, data: { changes: { clean: true }, execution: { execution_status: "succeeded", output_tail: { stdout: "重试成功\n" } } } });
     if (url.endsWith("/api/connector/task/cancel")) return Response.json({ ok: true, data: { status: "cancelled" } });
     if (body.action === "send") return Response.json({ state: "completed", assistant_body: "已回传" });
