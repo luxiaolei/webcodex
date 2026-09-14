@@ -8,7 +8,7 @@ WebCodex 的统一 Chat runtime 现在可以接管原来由人工或 heartbeat �
 
 当前 relay 是执行面，不是 GitHub 规划器。它只处理总控消息中的显式 `[to:ALIAS]` 或 profile 已登记的别名，按固定 alias → `wc_chat_*` 映射调用目标 Chat，等待 operation 完成，再把 `[from:ALIAS]` 回贴总控。每个 profile 一个 worker，并在该 Project 绑定的 Ego TaskSpace 中串行发送、限速和落 checkpoint。它不会自行轮询 GitHub、判断哪个工作包已完成、在 Chat 与本地 MCP 之间选路，也不会自动决定哪些任务并行或串行。
 
-结构化 `destination.kind=web_chat` 和 `destination.kind=local_runner` 已纳入同一执行面。网页目标走 Chat Session API；本地目标先调用项目绑定的 `task_start`，再以固定的 `gpt-6-astra`、`thinking=medium` 配置提交 Codex CLI 到 `commands_run`，最后用 `task_review` 等待 durable execution。`destination.project` 必须与 profile 的 `project` 完全一致，否则 fail-closed；结果或失败原因再由 relay 回传总控。
+结构化 `destination.kind=web_chat` 和 `destination.kind=local_runner` 已纳入同一执行面。网页目标走 Chat Session API；本地目标先调用项目绑定的 `task_start`，再以固定的 `gpt-6-astra`、`thinking=medium` 配置提交 Codex CLI 到 `commands_run`，并使用 `--ignore-user-config` 隔离无关的全局 MCP/插件配置，最后用 `task_review` 等待 durable execution。`destination.project` 必须与 profile 的 `project` 完全一致，否则 fail-closed；结果或失败原因再由 relay 回传总控。
 
 “总控读 Issue 后自动选 Chat、Session 或本地工具”的规划发生在网页端总控 Chat：它读取 GitHub，决定目标、串行/并行和验收，再生成显式 `[to:ALIAS]` 或结构化 `destination`。本地 Thread Agent 是轻量适配器，只校验这个目标、原文转发并等待 operation/task receipt；它不读取 GitHub、不生成 RouteDecision、不改变总控决定。当前实现提供 durable Chat relay 和独立的 ChatGPT Work → WebCodex MCP → Runner 路径；未产生真实 operation、工具结果和 Issue/PR 回写前，不应声称任务已推进。
 
