@@ -35,6 +35,14 @@ class RateLimitError extends Error {
   }
 }
 
+class ChatOperationUnknownError extends Error {
+  constructor(message, operationId) {
+    super(message);
+    this.name = "ChatOperationUnknownError";
+    this.operationId = operationId;
+  }
+}
+
 function readJson(path, fallback) {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return fallback; }
 }
@@ -196,6 +204,15 @@ async function observe(config) {
   return requestJson(`${config.provider_url}/v1/sessions/${config.controller_session}/messages`, { headers: headers(config) });
 }
 
+async function controllerReplyVisible(config, reply) {
+  try {
+    const observed = await observe(config);
+    return (observed.messages || []).some((message) => String(message.text || message.body || "") === reply);
+  } catch {
+    return false;
+  }
+}
+
 async function waitForSendWindow(config, state, path) {
   const delay = state.next_send_at - Date.now();
   if (delay > 0) await sleep(delay);
@@ -232,14 +249,20 @@ async function sendSession(config, state, path, sessionId, body, idempotencyKey)
       body: JSON.stringify({ action: "operation", operation_id: operationId }),
     });
     if (operation.state === "completed") return operation.assistant_body || "";
-    if (operation.state === "failed" || operation.state === "unknown") {
+    if (operation.state === "unknown") {
+      throw new ChatOperationUnknownError(
+        `Chat operation ${operation.state}: ${operation.error_message || operation.error_kind || "no detail"}`,
+        operationId,
+      );
+    }
+    if (operation.state === "failed") {
       const rateLimit = rateLimitFromOperation(operation, config);
       if (rateLimit) throw rateLimit;
       throw new Error(`Chat operation ${operation.state}: ${operation.error_message || operation.error_kind || "no detail"}`);
     }
     await sleep(1000);
   }
-  throw new Error("Chat operation wait exceeded 180 seconds; outcome is unknown");
+  throw new ChatOperationUnknownError("Chat operation wait exceeded 180 seconds; outcome is unknown", operationId);
 }
 
 function shellQuote(value) {
@@ -334,7 +357,24 @@ async function runLocalRunner(config, state, path, routed, event, key, attempt) 
   while (Date.now() < deadline) {
     const execution = current?.data?.execution || current?.data?.recent_execution;
     const status = execution?.execution_status;
-    if (status === "succeeded") return localRunnerOutput(execution) || `local task ${taskId} completed`;
+    if (status === "succeeded") {
+      if (current?.data?.changes?.clean === true) {
+        try {
+          const cancelled = await requestJson(`${config.api_url}/api/connector/task/cancel`, {
+            method: "POST",
+            headers: headers(config),
+            body: JSON.stringify({ task_id: taskId, reason: "execution completed with a clean workspace" }),
+          });
+          const cancelError = connectorError(cancelled, "task_cancel");
+          if (cancelError) throw cancelError;
+          event.local_task_status = "cancelled";
+        } catch (error) {
+          event.local_task_cleanup_error = String(error);
+        }
+        saveState(path, state);
+      }
+      return localRunnerOutput(execution) || `local task ${taskId} completed`;
+    }
     if (["failed", "cancelled", "interrupted", "unknown"].includes(status)) {
       const detail = execution?.output_tail?.stderr || execution?.terminal_reason || status;
       throw new Error(`local runner execution ${status}: ${detail}`);
@@ -421,6 +461,16 @@ async function processMessage(config, state, message, path) {
       event.updated_at = new Date().toISOString();
       saveState(path, state);
     } catch (error) {
+      if (error instanceof ChatOperationUnknownError) {
+        event.reply_operation_id = error.operationId;
+        if (await controllerReplyVisible(config, reply)) {
+          event.state = "replied";
+          event.reply_recovered = true;
+          event.updated_at = new Date().toISOString();
+          saveState(path, state);
+          return;
+        }
+      }
       event.state = error instanceof RateLimitError && error.safeToRetry ? "reply_rate_limited" : "reply_unknown";
       event.error = String(error);
       if (event.state === "reply_rate_limited") event.retry_at = Date.now() + error.retryAfterMs;
