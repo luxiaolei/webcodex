@@ -219,8 +219,9 @@ code_impact
 ```
 
 `route_dispatch` 是本地执行的统一入口：它只接受绑定 Project 的
-`destination.kind=local_runner`，先创建 `normal` task，再提交本地 Codex CLI
-（GPT-6 Astra、medium），结果通过 `task_review` 读取。`destination.project` 必须与
+`destination.kind=local_runner`，先创建 `normal` task，再提交本地 Codex CLI。总控可以
+在路由信封中指定白名单内的 `model` 和 `reasoning_effort`；省略时使用 GPT-6 Astra、
+medium。结果通过 `task_review` 读取。`destination.project` 必须与
 当前 Connector 的 executor project 完全一致；跨 Project 会 fail closed。长任务由
 Connector 的 durable task/execution 状态承载，调用方按返回的 `task_id` 和 `run_id`
 轮询，不要用浏览器插件补发结果。

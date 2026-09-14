@@ -17,6 +17,7 @@ struct ScriptedHost {
     invoke_error: Mutex<Option<ConnectorToolFailure>>,
     register_error: Mutex<Option<ConnectorJobHostError>>,
     start_error: Mutex<Option<ConnectorJobHostError>>,
+    last_command: Mutex<Option<String>>,
 }
 
 impl ConnectorExecutionHost for ScriptedHost {
@@ -50,9 +51,10 @@ impl ConnectorExecutionHost for ScriptedHost {
 
     fn start_execution_job(
         &self,
-        _request: ConnectorJobRequest,
+        request: ConnectorJobRequest,
     ) -> ConnectorHostFuture<'_, Result<ConnectorJobSubmission, ConnectorJobHostError>> {
         self.starts.fetch_add(1, Ordering::SeqCst);
+        *self.last_command.lock().unwrap() = Some(request.command);
         Box::pin(async move {
             if let Some(error) = self.start_error.lock().unwrap().take() {
                 return Err(error);
@@ -259,6 +261,46 @@ async fn route_dispatch_starts_the_bound_codex_worker() {
         true
     );
     assert_eq!(fx.host.starts.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn route_dispatch_applies_controller_model_and_reasoning() {
+    let fx = fixture();
+    let out = fx
+        .call(
+            "route_dispatch",
+            json!({
+                "destination": {"kind": "local_runner", "project": "agent:hosted:project"},
+                "prompt": "use the light worker",
+                "mode": "serial",
+                "acceptance": ["return the receipt"],
+                "model": "gpt-5.6-luna",
+                "reasoning_effort": "low"
+            }),
+        )
+        .await;
+    assert!(out.ok, "{}", out.body);
+    let command = fx.host.last_command.lock().unwrap().clone().unwrap();
+    assert!(command.contains("--model gpt-5.6-luna"));
+    assert!(command.contains("model_reasoning_effort=low"));
+}
+
+#[tokio::test]
+async fn route_dispatch_rejects_unsupported_model_settings() {
+    let fx = fixture();
+    let out = fx
+        .call(
+            "route_dispatch",
+            json!({
+                "destination": {"kind": "local_runner", "project": "agent:hosted:project"},
+                "prompt": "do not run",
+                "acceptance": ["no execution"],
+                "model": "gpt-4o"
+            }),
+        )
+        .await;
+    assert_eq!(out.body["error"]["code"], "invalid_arguments");
+    assert_eq!(fx.host.starts.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

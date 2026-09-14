@@ -62,6 +62,24 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+fn route_runner_settings(input: &RouteDispatchInput) -> Result<(&str, &str), &'static str> {
+    let model = input.model.as_deref().unwrap_or("gpt-6-astra");
+    let reasoning_effort = input.reasoning_effort.as_deref().unwrap_or("medium");
+    let allowed = match model {
+        "gpt-6-astra" | "gpt-5.6-sol" | "gpt-5.6-terra" => {
+            ["low", "medium", "high", "xhigh", "max", "ultra"].as_slice()
+        }
+        "gpt-5.6-luna" => ["low", "medium", "high", "xhigh", "max"].as_slice(),
+        "gpt-5.5" | "gpt-5.3-codex-spark" => ["low", "medium", "high", "xhigh"].as_slice(),
+        _ => return Err("model is not supported"),
+    };
+    if allowed.contains(&reasoning_effort) {
+        Ok((model, reasoning_effort))
+    } else {
+        Err("reasoning_effort is not supported for model")
+    }
+}
+
 fn validation_recipe_id(recipe: ConnectorRecipeId) -> RecipeId {
     match recipe {
         ConnectorRecipeId::Rust => RecipeId::Rust,
@@ -643,6 +661,10 @@ impl ConnectorRuntime {
         }) {
             return invalid_input("route_dispatch", "acceptance items must be 1..=1000 bytes");
         }
+        let (model, reasoning_effort) = match route_runner_settings(&input) {
+            Ok(settings) => settings,
+            Err(message) => return invalid_input("route_dispatch", message),
+        };
         let goal = format!(
             "{}\n\nAcceptance criteria:\n{}",
             prompt,
@@ -685,10 +707,14 @@ impl ConnectorRuntime {
         digest.update(task_id.as_bytes());
         digest.update(b"\0");
         digest.update(goal.as_bytes());
+        digest.update(b"\0");
+        digest.update(model.as_bytes());
+        digest.update(b"\0");
+        digest.update(reasoning_effort.as_bytes());
         let operation_id = format!("route-{:x}", digest.finalize());
         let command = format!(
-            "codex exec --ephemeral --skip-git-repo-check --sandbox workspace-write --model gpt-6-astra -c model_reasoning_effort=medium --json --cd . {}",
-            shell_quote(&goal)
+            "codex exec --ephemeral --ignore-user-config --skip-git-repo-check --sandbox workspace-write --model {model} -c model_reasoning_effort={reasoning_effort} --json --cd . {}",
+            shell_quote(&goal),
         );
         let mut dispatched = self
             .commands_run(
@@ -712,7 +738,12 @@ impl ConnectorRuntime {
         {
             data.insert(
                 "route_dispatch".to_string(),
-                json!({"destination": "local_runner", "mode": format!("{:?}", input.mode).to_lowercase()}),
+                json!({
+                    "destination": "local_runner",
+                    "mode": format!("{:?}", input.mode).to_lowercase(),
+                    "model": model,
+                    "reasoning_effort": reasoning_effort,
+                }),
             );
         }
         dispatched

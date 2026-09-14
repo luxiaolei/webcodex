@@ -9,7 +9,7 @@ import { chmodSync, closeSync, mkdirSync, openSync, readFileSync, renameSync, un
 import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { parseRouteWithFallback } from "./webcodex-route.mjs";
+import { parseRouteWithFallback, validateModelSettings } from "./webcodex-route.mjs";
 
 const defaultApi = "http://127.0.0.1:8080";
 const defaultProvider = "http://127.0.0.1:17841";
@@ -67,6 +67,9 @@ function loadConfig(path) {
   const aliases = config.aliases && typeof config.aliases === "object" && !Array.isArray(config.aliases)
     ? config.aliases
     : {};
+  const localRunnerModel = config.local_runner_model || "gpt-6-astra";
+  const localRunnerReasoning = config.local_runner_reasoning_effort || "medium";
+  validateModelSettings(localRunnerModel, localRunnerReasoning);
   return {
     api_url: String(config.api_url || process.env.WEBCODEX_URL || defaultApi).replace(/\/$/, ""),
     provider_url: String(config.provider_url || process.env.WEBCODEX_CHATGPT_WEB_URL || defaultProvider).replace(/\/$/, ""),
@@ -81,6 +84,8 @@ function loadConfig(path) {
     rate_limit_backoff_ms: boundedNumber(config.rate_limit_backoff_ms ?? defaultRateLimitBackoffMs, defaultRateLimitBackoffMs, 1_000, maxRateLimitBackoffMs),
     local_runner_mode: config.local_runner_mode === "read_only" ? "read_only" : "normal",
     local_runner_sandbox: config.local_runner_sandbox === "read-only" ? "read-only" : "workspace-write",
+    local_runner_model: localRunnerModel,
+    local_runner_reasoning_effort: localRunnerReasoning,
     local_runner_timeout_secs: boundedNumber(config.local_runner_timeout_secs ?? 120, 120, 1, 120),
     local_runner_max_wait_ms: boundedNumber(config.local_runner_max_wait_ms ?? defaultLocalRunnerWaitMs, defaultLocalRunnerWaitMs, 5_000, 7_200_000),
     route_repair_command: typeof config.route_repair_command === "string" && config.route_repair_command.trim()
@@ -165,6 +170,8 @@ async function routeFromBody(body, config) {
       body: parsed.route.prompt,
       acceptance: parsed.route.acceptance,
       mode: parsed.route.mode,
+      model: parsed.route.model,
+      reasoning_effort: parsed.route.reasoning_effort,
       route_source: parsed.source,
     };
   }
@@ -277,13 +284,16 @@ function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
-function localRunnerCommand(config, prompt) {
+function localRunnerCommand(config, prompt, routed = {}) {
   const sandbox = config.local_runner_sandbox || "workspace-write";
+  const model = routed.model || config.local_runner_model || "gpt-6-astra";
+  const reasoningEffort = routed.reasoning_effort || config.local_runner_reasoning_effort || "medium";
+  validateModelSettings(model, reasoningEffort);
   return [
     "codex exec --ephemeral --ignore-user-config --skip-git-repo-check",
     `--sandbox ${sandbox}`,
-    "--model gpt-6-astra",
-    "-c model_reasoning_effort=medium",
+    `--model ${model}`,
+    `-c model_reasoning_effort=${reasoningEffort}`,
     "--json --cd .",
     shellQuote(prompt),
   ].join(" ");
@@ -346,7 +356,9 @@ async function runLocalRunner(config, state, path, routed, event, key, attempt) 
     event.local_operation_id = operationId;
     saveState(path, state);
   }
-  const command = localRunnerCommand(config, goal);
+  const command = localRunnerCommand(config, goal, routed);
+  event.local_model = routed.model || config.local_runner_model || "gpt-6-astra";
+  event.local_reasoning_effort = routed.reasoning_effort || config.local_runner_reasoning_effort || "medium";
   const submitted = await requestJson(`${config.api_url}/api/connector/commands/run`, {
     method: "POST",
     headers: headers(config),

@@ -101,7 +101,7 @@
       "id": "runner",
       "type": "backend",
       "label": "Worker Codex CLI（子会话）",
-      "sublabel": "codex exec · GPT-6 · medium",
+      "sublabel": "codex exec · controller-selected model · reasoning",
       "pos": [
         560,
         540

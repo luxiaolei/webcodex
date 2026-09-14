@@ -84,6 +84,10 @@ pub(super) struct RouteDispatchInput {
     #[serde(default)]
     pub(super) mode: RouteDispatchMode,
     pub(super) acceptance: Vec<String>,
+    #[serde(default)]
+    pub(super) model: Option<String>,
+    #[serde(default)]
+    pub(super) reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

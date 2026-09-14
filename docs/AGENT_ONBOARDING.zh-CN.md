@@ -50,7 +50,9 @@ MCP Server 下的两类能力，并在本地执行链中保留一层父子 Codex
   `commands_run` 和 `task_review` 启动 Worker Codex CLI（子会话），
   `WEB_CHAT` 调用 `/api/chat/session`，由 Ego Browser 完成网页发送和读取。
 
-Worker Codex CLI 使用 `gpt-6-astra`、`thinking=medium` 执行本地任务，不直接调用 Eagle/Ego Browser，也不应该碰网页 DOM 或 Cookie。
+Worker Codex CLI 默认使用 `gpt-6-astra`、`thinking=medium` 执行本地任务；总控可以在
+`local_runner` 路由里给出白名单内的 `model` 和 `reasoning_effort`，由 relay 校验后传给
+本地 CLI。Worker 不直接调用 Eagle/Ego Browser，也不应该碰网页 DOM 或 Cookie。
 浏览器只存在于本地 WebCodex 的 Provider 边界内。失败改道也由 Chat 总控根据
 失败 receipt 决定，而不是 Router 自动猜测下一个目标。Worker 默认不再启动
 孙 CLI，递归深度固定为一层。

@@ -21,6 +21,51 @@ test("parses a strict structured route decision", () => {
   });
 });
 
+test("accepts controller-selected local runner model and reasoning", () => {
+  const decision = parseRouteDecision(JSON.stringify({
+    version: 1,
+    destination: { kind: "local_runner", project: "quantcompany" },
+    prompt: "Run the focused checks",
+    mode: "serial",
+    acceptance: ["return the test receipt"],
+    model: "gpt-5.6-luna",
+    reasoning_effort: "low",
+  }));
+
+  assert.equal(decision.model, "gpt-5.6-luna");
+  assert.equal(decision.reasoning_effort, "low");
+});
+
+test("rejects unsupported execution settings and settings on web chats", () => {
+  assert.throws(() => parseRouteDecision(JSON.stringify({
+    version: 1,
+    destination: { kind: "local_runner", project: "quantcompany" },
+    prompt: "Run the focused checks",
+    mode: "serial",
+    acceptance: ["return the test receipt"],
+    model: "gpt-4o",
+  })), /model is not supported/);
+
+  assert.throws(() => parseRouteDecision(JSON.stringify({
+    version: 1,
+    destination: { kind: "local_runner", project: "quantcompany" },
+    prompt: "Run the focused checks",
+    mode: "serial",
+    acceptance: ["return the test receipt"],
+    model: "gpt-5.5",
+    reasoning_effort: "ultra",
+  })), /reasoning_effort 'ultra' is not supported/);
+
+  assert.throws(() => parseRouteDecision(JSON.stringify({
+    version: 1,
+    destination: { kind: "web_chat", alias: "QC02" },
+    prompt: "Ask the web worker",
+    mode: "serial",
+    acceptance: ["return the result"],
+    model: "gpt-6-astra",
+  })), /only valid for local_runner/);
+});
+
 test("uses one fallback parser when structured content is invalid", async () => {
   const decision = await parseRouteWithFallback(
     "The controller response was not JSON.",

@@ -8,7 +8,7 @@ WebCodex 的统一 Chat runtime 现在可以接管原来由人工或 heartbeat �
 
 当前 relay 是执行面，不是 GitHub 规划器。它只处理总控消息中的显式 `[to:ALIAS]` 或 profile 已登记的别名，按固定 alias → `wc_chat_*` 映射调用目标 Chat，等待 operation 完成，再把 `[from:ALIAS]` 回贴总控。每个 profile 一个 worker，并在该 Project 绑定的 Ego TaskSpace 中串行发送、限速和落 checkpoint。它不会自行轮询 GitHub、判断哪个工作包已完成、在 Chat 与本地 MCP 之间选路，也不会自动决定哪些任务并行或串行。
 
-结构化 `destination.kind=web_chat` 和 `destination.kind=local_runner` 已纳入同一执行面。网页目标走 Chat Session API；本地目标先调用项目绑定的 `task_start`，再以固定的 `gpt-6-astra`、`thinking=medium` 配置提交 Codex CLI 到 `commands_run`，并使用 `--ignore-user-config` 隔离无关的全局 MCP/插件配置，最后用 `task_review` 等待 durable execution。`destination.project` 必须与 profile 的 `project` 完全一致，否则 fail-closed；结果或失败原因再由 relay 回传总控。
+结构化 `destination.kind=web_chat` 和 `destination.kind=local_runner` 已纳入同一执行面。网页目标走 Chat Session API；本地目标先调用项目绑定的 `task_start`，再把总控可选提供的 `model` 和 `reasoning_effort` 白名单配置提交给 `commands_run`。未提供时使用 profile 默认的 `gpt-6-astra`、`medium`；`--ignore-user-config` 继续隔离无关的全局 MCP/插件配置，最后用 `task_review` 等待 durable execution。`destination.project` 必须与 profile 的 `project` 完全一致，否则 fail-closed；结果或失败原因再由 relay 回传总控。
 
 “总控读 Issue 后自动选 Chat、Session 或本地工具”的规划发生在网页端总控 Chat：它读取 GitHub，决定目标、串行/并行和验收，再生成显式 `[to:ALIAS]` 或结构化 `destination`。本地 Thread Agent 是轻量适配器，只校验这个目标、原文转发并等待 operation/task receipt；它不读取 GitHub、不生成 RouteDecision、不改变总控决定。当前实现提供 durable Chat relay 和独立的 ChatGPT Work → WebCodex MCP → Runner 路径；未产生真实 operation、工具结果和 Issue/PR 回写前，不应声称任务已推进。
 
@@ -65,12 +65,18 @@ WEBCODEX_TOKEN="..." \
   "destination": { "kind": "local_runner", "project": "agent:local:quantcompany" },
   "prompt": "检查本轮数据质量并修复失败项。",
   "mode": "serial",
-  "acceptance": ["返回检查结果", "保留失败证据"]
+  "acceptance": ["返回检查结果", "保留失败证据"],
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "low"
 }
 ```
 
 其中 `destination.project` 必须与 profile 的 `project` 完全相同；profile 初始化会把
-这个绑定保留到运行时配置中。Relay 不替总控选择项目，也不会把目标改投到其他 Project。
+这个绑定保留到运行时配置中。`model` 和 `reasoning_effort` 只对 `local_runner` 有效，
+并按模型白名单校验；网页 Chat 路由携带它们会 fail-closed。可用模型是
+`gpt-6-astra`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`、`gpt-5.5` 和
+`gpt-5.3-codex-spark`，reasoning 档位还会按所选模型再次校验。Relay 不替总控选择项目或
+模型，也不会把目标改投到其他 Project。
 
 为兼容 HZ OS 旧总控的口头路由，profile 也可以为 alias 登记固定中文名称，worker 会识别“转发给‘收敛技术 PR15’”或 `forward to PR15`。没有显式标记或登记名称的消息会进入 `unrouted`，不会猜测目标。
 

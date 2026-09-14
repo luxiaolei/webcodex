@@ -194,6 +194,49 @@ test("processMessage dispatches a local_runner route through Runner and Codex CL
   assert.equal(state.events["local-1"].result_body, "本地 Codex 已完成");
 });
 
+test("processMessage applies controller-selected runner model and reasoning", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-local-runner-settings-"));
+  const statePath = join(root, "state.json");
+  const state = { version: 1, profile: "quantcompany", ignored_message_ids: [], events: {} };
+  const config = {
+    api_url: "http://webcodex.test", provider_url: "http://provider.test", profile: "quantcompany",
+    project: "agent:test:quantcompany", controller_session: "wc_chat_controller", targets: {},
+    min_send_interval_ms: 0, poll_ms: 1_000, local_runner_max_wait_ms: 10_000,
+  };
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    if (url.endsWith("/api/connector/task/start")) return Response.json({ ok: true, task_id: "wc_task_settings123" });
+    if (url.endsWith("/api/connector/commands/run")) {
+      assert.match(body.command, /--model gpt-5\.6-luna/);
+      assert.match(body.command, /model_reasoning_effort=low/);
+      return Response.json({ ok: true, data: { execution: { execution_status: "running" } } });
+    }
+    if (url.endsWith("/api/connector/task/review")) return Response.json({ ok: true, data: {
+      changes: { clean: true }, execution: { execution_status: "succeeded", output_tail: { stdout: "按指定配置完成\n" } },
+    } });
+    if (url.endsWith("/api/connector/task/cancel")) return Response.json({ ok: true, data: { status: "cancelled" } });
+    if (body.action === "send") return Response.json({ state: "completed", assistant_body: "已回传" });
+    throw new Error(`unexpected call: ${url}`);
+  };
+  try {
+    await processMessage(config, state, {
+      message_id: "local-settings-1", role: "user", text: JSON.stringify({
+        version: 1,
+        destination: { kind: "local_runner", project: "agent:test:quantcompany" },
+        prompt: "使用轻量配置执行",
+        mode: "serial",
+        acceptance: ["返回结果"],
+        model: "gpt-5.6-luna",
+        reasoning_effort: "low",
+      }),
+    }, statePath);
+  } finally { globalThis.fetch = oldFetch; }
+  assert.equal(state.events["local-settings-1"].state, "replied");
+  assert.equal(state.events["local-settings-1"].local_model, "gpt-5.6-luna");
+  assert.equal(state.events["local-settings-1"].local_reasoning_effort, "low");
+});
+
 test("processMessage confirms a controller reply after an ambiguous operation", async () => {
   const root = await mkdtemp(join(tmpdir(), "webcodex-relay-reply-reconcile-"));
   const statePath = join(root, "state.json");

@@ -29,7 +29,7 @@ pub fn capability_specs() -> Vec<ToolSpec> {
     vec![
         spec(
             "route_dispatch",
-            "Route one controller-decided local_runner envelope into this project. WebCodex starts or continues the project task, submits a bounded GPT-6 Astra Codex CLI worker with medium reasoning, and returns the durable execution receipt for task_review polling. It never chooses a different project or a different destination.",
+            "Route one controller-decided local_runner envelope into this project. WebCodex starts or continues the project task, submits a bounded allowlisted Codex CLI worker with the requested model and reasoning effort (default GPT-6 Astra at medium), and returns the durable execution receipt for task_review polling. It never chooses a different project or a different destination.",
             json!({
                 "type": "object",
                 "properties": {
@@ -49,6 +49,14 @@ pub fn capability_specs() -> Vec<ToolSpec> {
                         "minItems": 1,
                         "maxItems": 16,
                         "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+                    },
+                    "model": {
+                        "type": "string",
+                        "enum": ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.3-codex-spark"]
+                    },
+                    "reasoning_effort": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high", "xhigh", "max", "ultra"]
                     }
                 },
                 "required": ["destination", "prompt", "acceptance"],

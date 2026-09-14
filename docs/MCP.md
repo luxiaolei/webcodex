@@ -256,7 +256,8 @@ code_impact
 
 `route_dispatch` is the local execution entry point. It accepts only a
 project-bound `destination.kind=local_runner`, starts a writable `normal` task,
-and submits the local Codex CLI with GPT-6 Astra at medium reasoning. Read the
+and submits the local Codex CLI with the controller-selected allowlisted model
+and reasoning effort, defaulting to GPT-6 Astra at medium reasoning. Read the
 result through `task_review`; `destination.project` must exactly match the
 Connector executor project, so cross-project dispatch fails closed. Long jobs
 remain in the durable task/execution state and are polled with the returned
