@@ -33,16 +33,18 @@ run_ego_provider() {
   need_command ego-browser
   need_command python3
   local mode="$1"
-  local root_json port_json space_json mode_json
+  local root_json port_json space_json mode_json provider_url_json
   root_json="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$CONFIG_ROOT")"
   port_json="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$ADAPTER_PORT")"
   space_json="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "${WEBCODEX_EGO_SPACE_ID:-}")"
   mode_json="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$mode")"
+  # Ego may retain its Node helper: each invocation must evaluate the new source.
+  provider_url_json="$(python3 -c 'import json,pathlib,sys,uuid; print(json.dumps(pathlib.Path(sys.argv[1]).as_uri()+"?instance="+uuid.uuid4().hex))' "$EGO_PROVIDER_SCRIPT")"
   WEBCODEX_RUNTIME_HOME="$CONFIG_ROOT" \
     WEBCODEX_CHATGPT_WEB_PORT="$ADAPTER_PORT" \
     WEBCODEX_EGO_SPACE_ID="${WEBCODEX_EGO_SPACE_ID:-}" \
     WEBCODEX_EGO_PROVIDER_MODE="$mode" \
-    ego-browser nodejs -e "globalThis.__WEBCODEX_PROVIDER_CONFIG={root:${root_json},port:${port_json},spaceId:${space_json},mode:${mode_json}}; await import('file://${EGO_PROVIDER_SCRIPT}')"
+    ego-browser nodejs -e "globalThis.__WEBCODEX_PROVIDER_CONFIG={root:${root_json},port:${port_json},spaceId:${space_json},mode:${mode_json}}; await import(${provider_url_json})"
 }
 
 case "${1:-status}" in

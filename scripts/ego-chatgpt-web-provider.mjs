@@ -13,6 +13,7 @@ const sessionsPath = `${root}/ego/sessions.json`;
 const projectSpacesPath = injected.projectSpacesPath || process.env.WEBCODEX_EGO_PROJECT_SPACES_FILE || `${root}/ego/project-spaces.json`;
 const spaceIdFromEnv = String(injected.spaceId || process.env.WEBCODEX_EGO_SPACE_ID || "").trim();
 const maxBodyBytes = 1_000_000;
+const providerRevision = createHash("sha256").update(readFileSync(new URL(import.meta.url))).digest("hex").slice(0, 12);
 
 function finiteNumber(value, fallback) {
   const number = Number(value);
@@ -93,6 +94,15 @@ function writeJson(path, value) {
 
 function runtimeState() { return readJson(statePath, null); }
 function sessionState() { return readJson(sessionsPath, {}); }
+
+function updateSession(id, patch, fallback = {}) {
+  const current = sessionState();
+  const value = { ...(current[id] || fallback), ...patch };
+  for (const key of Object.keys(value)) if (value[key] === undefined) delete value[key];
+  current[id] = value;
+  writeJson(sessionsPath, current);
+  return value;
+}
 
 function projectSpaceConfig() {
   const value = readJson(projectSpacesPath, {});
@@ -255,7 +265,27 @@ function spaceIdForSession(saved, projectId) {
   return value;
 }
 
+const pageLoads = new Map();
+
 async function pageForSession(task, id, sessions, webProjectUrl) {
+  if (sessions[id]) sessions[id] = { ...sessions[id], ...sessionState()[id] };
+  const saved = sessions[id];
+  if (saved && (saved.web_project_url || null) !== webProjectUrl) {
+    throw new Error("web_project_url does not match the existing Chat session binding");
+  }
+  const pending = pageLoads.get(id);
+  if (pending) {
+    if (pending.spaceId !== task.spaceId || pending.webProjectUrl !== webProjectUrl) {
+      throw new Error("concurrent page request does not match the existing Chat session binding");
+    }
+    return pending.promise;
+  }
+  const promise = acquireSessionPage(task, id, sessions, webProjectUrl);
+  pageLoads.set(id, { promise, spaceId: task.spaceId, webProjectUrl });
+  try { return await promise; } finally { pageLoads.delete(id); }
+}
+
+async function acquireSessionPage(task, id, sessions, webProjectUrl) {
   const saved = sessions[id];
   if (saved && (saved.web_project_url || null) !== webProjectUrl) {
     throw new Error("web_project_url does not match the existing Chat session binding");
@@ -277,7 +307,7 @@ async function pageForSession(task, id, sessions, webProjectUrl) {
       }
     }
     delete saved.page_label;
-    writeJson(sessionsPath, sessions);
+    updateSession(id, { page_label: undefined }, saved);
   }
   let page;
   try {
@@ -295,8 +325,13 @@ async function pageForSession(task, id, sessions, webProjectUrl) {
       }
     }
     delete victim[1].page_label;
-    writeJson(sessionsPath, sessions);
+    updateSession(victim[0], { page_label: undefined }, victim[1]);
     page = await task.newPage();
+  }
+  // Keep the handle even when navigation fails, so recovery reuses this tab.
+  if (saved) {
+    saved.page_label = page.label;
+    updateSession(id, { page_label: page.label }, saved);
   }
   await page.goto(saved?.url || webProjectUrl || "https://chatgpt.com/");
   await waitForComposer(page);
@@ -304,10 +339,6 @@ async function pageForSession(task, id, sessions, webProjectUrl) {
     const expected = new URL(webProjectUrl).pathname.match(/\/g\/(g-p-[a-f0-9]+)/i)?.[1];
     const actual = new URL(await page.url()).pathname;
     if (!expected || !actual.startsWith(`/g/${expected}`)) throw new Error("ChatGPT Project navigation did not preserve the configured Project; nothing was sent");
-  }
-  if (saved) {
-    saved.page_label = page.label;
-    writeJson(sessionsPath, sessions);
   }
   return page;
 }
@@ -337,14 +368,13 @@ async function runResponse(payload) {
   // Keep the existing page bound and let the caller back off safely.
   if (await pageHasRateLimit(page)) throw markRateLimited(true);
   markSendStarted();
-  sessions[id] = { ...(saved || {}), page_label: page.label, url: await page.url(), project_id: project, space_id: spaceId, web_project_url: webProjectUrl, pending_body: text, pending_user_message_id: null };
-  writeJson(sessionsPath, sessions);
+  sessions[id] = updateSession(id, { page_label: page.label, url: await page.url(), project_id: project, space_id: spaceId, web_project_url: webProjectUrl, pending_body: text, pending_user_message_id: null }, saved);
   const previousUserId = await page.evaluate(() => [...document.querySelectorAll('[data-message-author-role="user"]')].at(-1)?.getAttribute('data-message-id'));
   await page.fill("loc=css:#prompt-textarea", text);
   await page.click('loc=css:button[aria-label="Send prompt"]');
   await page.waitForURL(/\/c\//, { timeout: 30_000 });
   sessions[id].url = await page.url();
-  writeJson(sessionsPath, sessions);
+  updateSession(id, { url: sessions[id].url });
   const deadline = Date.now() + 3_600_000;
   let result;
   while (Date.now() < deadline) {
@@ -352,7 +382,7 @@ async function runResponse(payload) {
       const userId = await page.evaluate(() => [...document.querySelectorAll('[data-message-author-role="user"]')].at(-1)?.getAttribute('data-message-id'));
       if (userId && userId !== previousUserId) {
         sessions[id].pending_user_message_id = userId;
-        writeJson(sessionsPath, sessions);
+        updateSession(id, { pending_user_message_id: userId });
       }
     }
     result = await page.evaluate(completedTurn, { body: text, userMessageId: sessions[id].pending_user_message_id });
@@ -362,18 +392,16 @@ async function runResponse(payload) {
   }
   if (!result) throw new Error("Ego Browser assistant response did not complete within one hour");
   const responseId = `ego_${createHash("sha256").update(`${id}\0${result.messageId || result.text}`).digest("hex").slice(0, 32)}`;
-  sessions[id] = {
-    ...(saved || {}),
+  sessions[id] = updateSession(id, {
     page_label: page.label,
     url: await page.url(),
     response_id: responseId,
     project_id: project,
     space_id: spaceId,
     web_project_url: webProjectUrl,
-  };
-  delete sessions[id].pending_body;
-  delete sessions[id].pending_user_message_id;
-  writeJson(sessionsPath, sessions);
+    pending_body: undefined,
+    pending_user_message_id: undefined,
+  });
   markSendSucceeded();
   return {
     id: responseId,
@@ -419,7 +447,7 @@ async function serve() {
   const server = createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/healthz") {
       const spaceIds = configuredSpaceIds();
-      send(response, 200, { ok: true, provider: "ego-browser", space_ids: spaceIds, space_id: spaceIds.length === 1 ? spaceIds[0] : null });
+      send(response, 200, { ok: true, provider: "ego-browser", revision: providerRevision, space_ids: spaceIds, space_id: spaceIds.length === 1 ? spaceIds[0] : null });
       return;
     }
     if (request.method === "POST" && request.url === "/shutdown") {

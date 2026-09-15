@@ -92,6 +92,8 @@ worker 把整段原文发送给目标，等待 WebCodex operation 进入 `comple
 
 ## 运行证据
 
+Provider 的 `/healthz` 返回 `revision`（已加载源码的 SHA-256 前 12 位）；部署时应与本地 provider 文件核对，端口在线本身不能证明新代码生效。Ego 启动器为每次加载使用独立模块 URL，避免 helper 缓存旧模块。并行观察只写回各自会话字段，同一会话共用一次页面获取；页面导航失败仍保留标签绑定，后续恢复不重复开页。
+
 静态检查和路由单测：
 
 ```bash

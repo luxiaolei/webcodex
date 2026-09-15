@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -46,6 +46,32 @@ test("Project bindings select their configured Ego TaskSpace", () => {
   assert.equal(spaceIdForSession({}, "qc"), 2);
   assert.equal(spaceIdForSession({}, "hz"), 1);
   assert.throws(() => spaceIdForSession({ space_id: 1 }, "qc"), /does not match/);
+});
+
+test("parallel observations preserve other session bindings and share one page per session", async () => {
+  const file = join(root, "ego", "sessions.json");
+  const initial = { a: { url: "https://chatgpt.com/c/a" }, b: { url: "https://chatgpt.com/c/b" } };
+  writeFileSync(file, JSON.stringify(initial));
+  let opened = 0;
+  const task = { async newPage() {
+    return { label: `parallel-${++opened}`, async goto() {}, async waitForSelector() {} };
+  }};
+  const [a, b] = await Promise.all([
+    pageForSession(task, "a", structuredClone(initial), null),
+    pageForSession(task, "b", structuredClone(initial), null),
+  ]);
+  const saved = JSON.parse(readFileSync(file));
+  assert.equal(saved.a.page_label, a.label, "a later write must not erase another session's page");
+  assert.equal(saved.b.page_label, b.label);
+
+  initial.c = { url: "https://chatgpt.com/c/c" };
+  const before = opened;
+  const [first, second] = await Promise.all([
+    pageForSession(task, "c", structuredClone(initial), null),
+    pageForSession(task, "c", structuredClone(initial), null),
+  ]);
+  assert.equal(first, second);
+  assert.equal(opened - before, 1, "a concurrent read must reuse the in-flight page acquisition");
 });
 
 test("completion matches the request and final actions without relying on visible turn counts", () => {
