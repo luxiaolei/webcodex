@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 const MAX_PROMPT_CHARS = 32_768;
 const MAX_ACCEPTANCE_ITEMS = 32;
 const MAX_REPAIR_OUTPUT_CHARS = 1_000_000;
-const DEFAULT_REPAIR_TIMEOUT_MS = 30_000;
+const DEFAULT_REPAIR_TIMEOUT_MS = 120_000;
 const MODEL_REASONING_EFFORTS = Object.freeze({
   "gpt-6-astra": new Set(["low", "medium", "high", "xhigh", "max", "ultra"]),
   "gpt-5.6-sol": new Set(["low", "medium", "high", "xhigh", "max", "ultra"]),

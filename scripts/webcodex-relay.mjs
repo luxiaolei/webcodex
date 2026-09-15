@@ -102,7 +102,7 @@ function loadConfig(path) {
     route_repair_cwd: typeof config.route_repair_cwd === "string" && config.route_repair_cwd.trim()
       ? config.route_repair_cwd.trim()
       : undefined,
-    route_repair_timeout_ms: boundedNumber(config.route_repair_timeout_ms ?? 30_000, 30_000, 5_000, 120_000),
+    route_repair_timeout_ms: boundedNumber(config.route_repair_timeout_ms ?? 120_000, 120_000, 5_000, 120_000),
   };
 }
 
