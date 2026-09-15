@@ -404,8 +404,14 @@ function sessionIdFromPath(pathname) {
 }
 
 async function serve() {
-  // ponytail: serialize all browser turns; add per-session locks only if throughput requires it.
+  // Keep sends serialized, but observations must remain available while a long
+  // browser turn is still generating. A rejected send must not poison the queue.
   const queue = { tail: Promise.resolve() };
+  const enqueueSend = (operation) => {
+    const result = queue.tail.then(operation);
+    queue.tail = result.catch(() => {});
+    return result;
+  };
   const server = createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/healthz") {
       const spaceIds = configuredSpaceIds();
@@ -421,9 +427,7 @@ async function serve() {
       try {
         const url = new URL(request.url, "http://127.0.0.1");
         const id = sessionIdFromPath(url.pathname);
-        const result = await new Promise((resolveResult, rejectResult) => {
-          queue.tail = queue.tail.then(() => observeSession(id).then(resolveResult, rejectResult));
-        });
+        const result = await observeSession(id);
         send(response, 200, result);
       } catch (error) {
         send(response, 502, { error: { message: error instanceof Error ? error.message : String(error) } });
@@ -436,9 +440,7 @@ async function serve() {
     }
     try {
       const payload = await readBody(request);
-      const result = await new Promise((resolveResult, rejectResult) => {
-        queue.tail = queue.tail.then(() => runResponse(payload).then(resolveResult, rejectResult));
-      });
+      const result = await enqueueSend(() => runResponse(payload));
       send(response, 200, result);
     } catch (error) {
       if (error instanceof RateLimitError) {
