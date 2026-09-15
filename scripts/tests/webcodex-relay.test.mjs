@@ -171,8 +171,8 @@ test("processMessage dispatches a local_runner route through Runner and Codex CL
       return Response.json({ ok: true, task_id: "wc_task_local123", run_id: "wc_run_local123", data: {} });
     }
     if (url.endsWith("/api/connector/commands/run")) {
-      assert.match(body.command, /codex exec .*--model gpt-6-astra .*medium/);
-      assert.match(body.command, /codex exec .*--ignore-user-config/);
+      assert.match(body.command, /exec .*--model gpt-6-astra .*medium/);
+      assert.match(body.command, /exec .*--ignore-user-config/);
       assert.match(body.command, /读取仓库并只返回名称/);
       return Response.json({
         ok: true,

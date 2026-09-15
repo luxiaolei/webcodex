@@ -5,7 +5,7 @@
 // ponytail: one profile worker serializes its targets; add leases only when a
 // measured deployment needs parallel target throughput.
 
-import { chmodSync, closeSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -94,6 +94,9 @@ function loadConfig(path) {
     local_runner_sandbox: config.local_runner_sandbox === "read-only" ? "read-only" : "workspace-write",
     local_runner_model: localRunnerModel,
     local_runner_reasoning_effort: localRunnerReasoning,
+    local_runner_codex_command: typeof config.local_runner_codex_command === "string" && config.local_runner_codex_command.trim()
+      ? config.local_runner_codex_command.trim()
+      : undefined,
     local_runner_timeout_secs: boundedNumber(config.local_runner_timeout_secs ?? 120, 120, 1, 120),
     local_runner_max_wait_ms: boundedNumber(config.local_runner_max_wait_ms ?? defaultLocalRunnerWaitMs, defaultLocalRunnerWaitMs, 5_000, 7_200_000),
     route_repair_command: typeof config.route_repair_command === "string" && config.route_repair_command.trim()
@@ -363,13 +366,23 @@ function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
+function codexExecutable(config) {
+  if (config.local_runner_codex_command) return config.local_runner_codex_command;
+  if (process.platform === "darwin") {
+    for (const candidate of ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"]) {
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return "codex";
+}
+
 function localRunnerCommand(config, prompt, routed = {}) {
   const sandbox = config.local_runner_sandbox || "workspace-write";
   const model = routed.model || config.local_runner_model || "gpt-6-astra";
   const reasoningEffort = routed.reasoning_effort || config.local_runner_reasoning_effort || "medium";
   validateModelSettings(model, reasoningEffort);
   return [
-    "codex exec --ephemeral --ignore-user-config --skip-git-repo-check",
+    `${shellQuote(codexExecutable(config))} exec --ephemeral --ignore-user-config --skip-git-repo-check`,
     `--sandbox ${sandbox}`,
     `--model ${model}`,
     `-c model_reasoning_effort=${reasoningEffort}`,
