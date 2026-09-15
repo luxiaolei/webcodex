@@ -285,6 +285,7 @@ async function pageForSession(task, id, sessions, webProjectUrl) {
   } catch (error) {
     if (!/page budget reached/i.test(String(error))) throw error;
     const victim = Object.entries(sessions).find(([sessionId, value]) => sessionId !== id && value?.page_label
+      && !value.pending_body
       && (task.spaceId === undefined || Number(value.space_id) === Number(task.spaceId)));
     if (!victim) throw error;
     const victimPage = task.page(victim[1].page_label);
@@ -332,6 +333,9 @@ async function runResponse(payload) {
   await waitForSendWindow();
   const page = await pageForSession(task, id, sessions, webProjectUrl);
   await dismissRateLimitDialog(page);
+  // A visible rate-limit banner means no prompt has been submitted yet.
+  // Keep the existing page bound and let the caller back off safely.
+  if (await pageHasRateLimit(page)) throw markRateLimited(true);
   markSendStarted();
   sessions[id] = { ...(saved || {}), page_label: page.label, url: await page.url(), project_id: project, space_id: spaceId, web_project_url: webProjectUrl, pending_body: text, pending_user_message_id: null };
   writeJson(sessionsPath, sessions);

@@ -437,6 +437,63 @@ test("processMessage confirms a controller reply after an ambiguous operation", 
   assert.equal(calls.filter(({ body }) => body?.action === "reconcile").length, 1);
 });
 
+test("processMessage reconciles an ambiguous target send before any retry", async () => {
+  const root = await mkdtemp(join(tmpdir(), "webcodex-relay-forward-reconcile-"));
+  const statePath = join(root, "state.json");
+  const state = {
+    version: 1,
+    profile: "quantcompany",
+    ignored_message_ids: [],
+    events: {
+      "forward-reconcile-1": {
+        state: "unknown",
+        source_message_id: "forward-reconcile-1",
+        source_body: "[to:QC02]\n执行一次",
+        target_kind: "web_chat",
+        target_alias: "QC02",
+        target_session_id: "wc_chat_qc02",
+        target_body: "执行一次",
+        forward_operation_id: "wc_chat_op_forward_unknown",
+        attempts: 1,
+        retry_at: 0,
+        error: "ChatOperationUnknownError: response lost",
+      },
+    },
+  };
+  const config = {
+    api_url: "http://webcodex.test",
+    provider_url: "http://provider.test",
+    profile: "quantcompany",
+    controller_session: "wc_chat_controller",
+    targets: { QC02: "wc_chat_qc02" },
+    min_send_interval_ms: 0,
+    poll_ms: 1_000,
+  };
+  const calls = [];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    if (url.startsWith(config.provider_url)) {
+      calls.push({ url, body: null });
+      return Response.json({ generating: false, messages: [
+        { message_id: "target-user", role: "user", text: "执行一次" },
+        { message_id: "target-assistant", role: "assistant", text: "已经执行" },
+      ] });
+    }
+    const body = JSON.parse(options.body);
+    calls.push({ url, body });
+    if (body.action === "reconcile") return Response.json({ state: "completed", assistant_body: "已经执行" });
+    if (body.action === "send") return Response.json({ state: "completed", assistant_body: "已回传" });
+    throw new Error(`unexpected call: ${JSON.stringify(body)}`);
+  };
+  try {
+    await processMessage(config, state, { message_id: "forward-reconcile-1", role: "user", text: state.events["forward-reconcile-1"].source_body }, statePath);
+  } finally { globalThis.fetch = oldFetch; }
+  assert.equal(state.events["forward-reconcile-1"].state, "replied");
+  assert.equal(state.events["forward-reconcile-1"].result_body, "已经执行");
+  assert.equal(calls.filter(({ body }) => body?.action === "send").length, 1);
+  assert.equal(calls.filter(({ body }) => body?.action === "reconcile").length, 1);
+});
+
 test("processMessage retries a pre-dispatch writable slot conflict", async () => {
   const root = await mkdtemp(join(tmpdir(), "webcodex-relay-slot-retry-"));
   const statePath = join(root, "state.json");

@@ -48,7 +48,7 @@ WEBCODEX_TOKEN="..." \
   scripts/webcodex-chat-runtime.sh relay
 ```
 
-每个 profile 只能有一个 worker；检查点写入 `~/.config/webcodex/relay/<profile>.json`，文件权限为 0600。事件状态是 `forwarding`、`forwarded`、`replied`、`reply_unknown`、`unknown`、`unrouted` 或 `rejected`。`unknown` 不会盲目重试；只有 provider 独立 read-back 证实 assistant 回执后，才可用 Chat Session API 的 `reconcile` action 收口原 operation。
+每个 profile 只能有一个 worker；检查点写入 `~/.config/webcodex/relay/<profile>.json`，文件权限为 0600。事件状态是 `forwarding`、`forwarded`、`replied`、`reply_unknown`、`unknown`、`unrouted` 或 `rejected`。`unknown` 不会盲目重试；worker 会先用 provider 独立 read-back 对账，只有证实 assistant 回执后，才可用 Chat Session API 的 `reconcile` action 收口原 operation。
 
 总控消息推荐包含显式目标标记，例如：
 
@@ -80,11 +80,11 @@ WEBCODEX_TOKEN="..." \
 
 为兼容 HZ OS 旧总控的口头路由，profile 也可以为 alias 登记固定中文名称，worker 会识别“转发给‘收敛技术 PR15’”或 `forward to PR15`。没有显式标记或登记名称的消息会进入 `unrouted`，不会猜测目标。
 
-worker 把整段原文发送给目标，等待 WebCodex operation 进入 `completed`，再把 `[from:QC02]` 加到回执前并发送回总控。若目标返回 `Thinking failed`，只在同一目标 Chat 发送一次 `continue`；仍不明确就保留 `unknown`。自动回复失败会进入 `reply_unknown`，不会声称已送达。网络响应丢失但 provider 已独立读到 assistant 内容时，使用 `POST /api/chat/session` 的 `{"action":"reconcile","operation_id":"...","assistant_body":"..."}` 完成 durable 记录；没有独立证据时不得 reconcile 或重放。Runner execution 成功且 `task_review` 证实工作区 clean 时，relay 自动调用 `task_cancel` 收口任务；有变更的 writable task 不会被自动取消。只有未创建 `task_id` 且错误明确为 writable slot 占用的 `unknown` 才会在 backoff 后重试；其他 `unknown` 会发送一次 `webcodex.relay.failure.v1` 失败收据给总控，要求总控决定重试模型、换目标或暂停，relay 不自行重放。失败收据发送本身也有独立幂等键和状态。
+worker 把整段原文发送给目标，等待 WebCodex operation 进入 `completed`，再把 `[from:QC02]` 加到回执前并发送回总控。若目标返回 `Thinking failed`，只在同一目标 Chat 发送一次 `continue`；仍不明确就保留 `unknown`。自动回复失败会进入 `reply_unknown`，不会声称已送达。网络响应丢失但 provider 已独立读到 assistant 内容时，使用 `POST /api/chat/session` 的 `{"action":"reconcile","operation_id":"...","assistant_body":"..."}` 完成 durable 记录；下一轮 worker 会先尝试这次对账，确认已执行后再补发回总控，不会重发目标任务。没有独立证据时保持 `unknown`，由总控决定重试模型、换目标或暂停。Runner execution 成功且 `task_review` 证实工作区 clean 时，relay 自动调用 `task_cancel` 收口任务；有变更的 writable task 不会被自动取消。只有未创建 `task_id` 且错误明确为 writable slot 占用的 `unknown` 才会在 backoff 后重试；失败收据发送本身也有独立幂等键和状态。
 
 如果总控自己的发送操作也进入 `unknown`，WebCodex 会故意拒绝下一次发送，避免重复写入。relay 默认保留这个状态；它只会在 provider 独立 read-back 找到“唯一一条同正文 user 消息后紧邻的非思考 assistant 消息”时调用 `reconcile` 收口原 operation。没有这种确定证据时，必须保持 `unknown`，通过一次幂等失败收据让总控决定重试、换目标或暂停。只有人工完成独立核验后，才可直接调用 `resolve_unknown` 把操作标记为 `failed/unknown_resolved`；这个动作不写入 assistant 消息、不声称任务成功，也不能按时间阈值自动触发。禁止直接改 SQLite、用新总控绕过旧状态或重放原任务。
 
-网页端请求由 provider 和 relay 两层共同限速：同一 TaskSpace 的发送间隔由 profile 的 `min_send_interval_ms` 控制（QuantCompany 当前为 30 秒；代码默认值为 15 秒）。看到 ChatGPT 的 “Too many requests” 或 429 时，安全的发送前失败会进入 `rate_limited`，回执阶段会进入 `reply_rate_limited`，优先遵循 provider 的 `retry_after`，缺失时使用 `rate_limit_backoff_ms`，单次最长等待 5 分钟后再恢复。已经提交到网页端、但结果不明的 turn 不会自动重放，会保留为 `unknown`，避免重复执行本地任务。轮询默认是 5 秒。
+网页端请求由 provider 和 relay 两层共同限速：同一 TaskSpace 的发送间隔由 profile 的 `min_send_interval_ms` 控制（QuantCompany 当前为 30 秒；代码默认值为 15 秒）。Provider 优先复用已经绑定的 Ego Browser 页面，不为每次发送新开页面；达到页面预算时只回收 relay 登记且当前没有待发送内容的旧页面，不打断正在运行的网页任务。页面出现限速提示时保持绑定、停止提交并退避。看到 ChatGPT 的 “Too many requests” 或 429 时，安全的发送前失败会进入 `rate_limited`，回执阶段会进入 `reply_rate_limited`，优先遵循 provider 的 `retry_after`，缺失时使用 `rate_limit_backoff_ms`，单次最长等待 5 分钟后再恢复。已经提交到网页端、但结果不明的 turn 不会自动重放，会保留为 `unknown`，避免重复执行本地任务。轮询默认是 5 秒。
 
 ## 切换旧 relay
 

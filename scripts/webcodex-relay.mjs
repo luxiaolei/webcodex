@@ -254,6 +254,49 @@ async function reconcileObservedSend(config, sessionId, operationId, body) {
   return result.state === "completed" ? result.assistant_body : null;
 }
 
+async function reconcileUnknownForward(config, state, path, event) {
+  if (event.target_kind !== "web_chat" || !event.forward_operation_id) return false;
+  const recovered = await reconcileObservedSend(
+    config,
+    event.target_session_id,
+    event.forward_operation_id,
+    event.target_body || event.source_body,
+  ).catch(() => null);
+  if (!recovered) {
+    event.retry_at = Date.now() + Math.max(config.poll_ms, 15_000);
+    event.updated_at = new Date().toISOString();
+    saveState(path, state);
+    return false;
+  }
+  event.state = "forwarded";
+  event.result_body = recovered;
+  delete event.error;
+  delete event.retry_at;
+  event.reconciled_at = new Date().toISOString();
+  event.updated_at = event.reconciled_at;
+  saveState(path, state);
+  return true;
+}
+
+async function reconcileUnknownReply(config, state, path, event, routed) {
+  if (event.state !== "reply_unknown" || !event.reply_operation_id) return false;
+  const body = event.reply_body || `[from:${routed.alias || "LOCAL_RUNNER"}]\n${event.result_body || ""}`.slice(0, maxMessageChars);
+  const recovered = await reconcileObservedSend(config, config.controller_session, event.reply_operation_id, body).catch(() => null);
+  if (!recovered) {
+    event.retry_at = Date.now() + Math.max(config.poll_ms, 15_000);
+    event.updated_at = new Date().toISOString();
+    saveState(path, state);
+    return false;
+  }
+  event.state = "replied";
+  delete event.error;
+  delete event.retry_at;
+  event.reconciled_at = new Date().toISOString();
+  event.updated_at = event.reconciled_at;
+  saveState(path, state);
+  return true;
+}
+
 async function waitForSendWindow(config, state, path) {
   const delay = state.next_send_at - Date.now();
   if (delay > 0) await sleep(delay);
@@ -548,7 +591,13 @@ async function processMessage(config, state, message, path) {
     && Number(existing.failure_report_retry_at || 0) <= Date.now();
   const resumable = existing && (existing.state === "forwarding"
     || (["reply_unknown", "forwarded"].includes(existing.state) && Number(existing.retry_at || 0) <= Date.now()));
-  if (existing && !retryable && !slotRetryable && !resumable && !failureReportPending && !failureReportRetryable) return;
+  const unknownForwardRetryable = existing && existing.state === "unknown"
+    && existing.target_kind === "web_chat" && existing.forward_operation_id
+    && Number(existing.retry_at || 0) <= Date.now();
+  const unknownReplyRetryable = existing && existing.state === "reply_unknown"
+    && existing.reply_operation_id && Number(existing.retry_at || 0) <= Date.now();
+  if (existing && !retryable && !slotRetryable && !resumable && !failureReportPending
+    && !failureReportRetryable && !unknownForwardRetryable && !unknownReplyRetryable) return;
   if (message.role !== "user" && message.role !== "assistant") {
     if (existing) return;
     state.ignored_message_ids.push(key);
@@ -566,7 +615,7 @@ async function processMessage(config, state, message, path) {
     saveState(path, state);
     return;
   }
-  if (failureReportPending || failureReportRetryable) {
+  if (!unknownForwardRetryable && (failureReportPending || failureReportRetryable)) {
     await reportUnknownFailure(config, state, path, routed, existing, key, existing.error || "unknown result");
     return;
   }
@@ -578,6 +627,7 @@ async function processMessage(config, state, message, path) {
     target_alias: routed.alias || "LOCAL_RUNNER",
     target_session_id: routed.sessionId || null,
     target_project: routed.project || null,
+    target_body: routed.body,
     route_source: routed.route_source,
     attempts: 0,
     updated_at: new Date().toISOString(),
@@ -589,6 +639,13 @@ async function processMessage(config, state, message, path) {
     delete event.retry_at;
   }
   saveState(path, state);
+  if (unknownForwardRetryable && await reconcileUnknownForward(config, state, path, event)) {
+    // The original send did happen; continue with the normal controller reply.
+  } else if (unknownForwardRetryable) {
+    return;
+  }
+  if (unknownReplyRetryable && await reconcileUnknownReply(config, state, path, event, routed)) return;
+  if (unknownReplyRetryable) return;
   try {
     const attempt = resumable ? Math.max(1, Number(event.attempts || 0)) : Number(event.attempts || 0) + 1;
     event.attempts = attempt;
@@ -611,6 +668,7 @@ async function processMessage(config, state, message, path) {
     event.updated_at = new Date().toISOString();
     saveState(path, state);
     const reply = `[from:${routed.alias || "LOCAL_RUNNER"}]\n${result}`.slice(0, maxMessageChars);
+    event.reply_body = reply;
     try {
       await sendSession(config, state, path, config.controller_session, reply, `${config.profile}:${key}:reply:${attempt}`);
       event.state = "replied";
@@ -655,6 +713,7 @@ async function processMessage(config, state, message, path) {
     } else {
       event.state = "unknown";
     }
+    if (error instanceof ChatOperationUnknownError) event.forward_operation_id = error.operationId;
     event.error = String(error);
     event.updated_at = new Date().toISOString();
     saveState(path, state);
